@@ -13,6 +13,7 @@ import pytz
 import requests
 from telegram import Update, ParseMode
 from telegram.ext import Updater, CommandHandler, CallbackContext, Job, ConversationHandler, MessageHandler, Filters
+import html
 REMINDER_DATE, REMINDER_TEXT = range(2)
 
 # — Настройка логирования —
@@ -156,7 +157,23 @@ def receive_reminder_datetime(update: Update, context: CallbackContext):
         return REMINDER_DATE
 
 def receive_reminder_text(update: Update, context: CallbackContext):
-    text = update.message.text
+    # Preserve Telegram-formatted links by rebuilding text with HTML tags
+    msg = update.message
+    raw = msg.text or ""
+    entities = msg.entities or []
+    html_text = ""
+    last = 0
+    for ent in entities:
+        if ent.type in ("text_link", "url"):
+            # append escaped text before the entity
+            html_text += html.escape(raw[last:ent.offset])
+            label = raw[ent.offset:ent.offset + ent.length]
+            url = ent.url if ent.type == "text_link" else label
+            html_text += f'<a href="{html.escape(url)}">{html.escape(label)}</a>'
+            last = ent.offset + ent.length
+    # append any remaining text
+    html_text += html.escape(raw[last:])
+    text = html_text
     dt = context.user_data.pop('reminder_dt')
     reminders = load_reminders()
     # assign short incremental ID
