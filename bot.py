@@ -252,7 +252,7 @@ def add_daily_reminder(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     args = context.args
     if len(args) < 2:
-        update.message.reply_text("Использование: /remind_daily HH:MM текст")
+        update.message.reply_text("Использование: /remind_daily ЧЧ:ММ текст")
         return
     time_str = args[0]
     text = ' '.join(args[1:])
@@ -275,13 +275,13 @@ def add_weekly_reminder(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     args = context.args
     if len(args) < 3:
-        update.message.reply_text("Использование: /remind_weekly DDD HH:MM текст (DDD=Mon,Tue,...)")
+        update.message.reply_text("Использование: /remind_weekly <День> ЧЧ:ММ текст (День = Пн,Вт,Ср,Чт,Пт,Сб,Вс)")
         return
     day_str, time_str = args[0], args[1]
     text = ' '.join(args[2:])
     days_map = {'Mon':0,'Tue':1,'Wed':2,'Thu':3,'Fri':4,'Sat':5,'Sun':6}
     if day_str not in days_map:
-        update.message.reply_text("День указать как Mon, Tue, Wed, Thu, Fri, Sat или Sun")
+        update.message.reply_text("День указать как Пн, Вт, Ср, Чт, Пт, Сб или Вс")
         return
     try:
         hh, mm = map(int, time_str.split(':'))
@@ -308,11 +308,11 @@ def add_weekly_reminder(update: Update, context: CallbackContext):
 # — Список активных напоминаний —
 def list_reminders(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    reminders = [r for r in load_reminders() if r['chat_id'] == chat_id]
+    reminders = load_reminders()
     if not reminders:
         update.message.reply_text("У вас нет активных напоминаний.")
         return
-    lines = ["📋 <b>Ваши напоминания:</b>"]
+    lines = ["📋 <b>Все активные напоминания:</b>"]
     for r in reminders:
         line = f"ID: {r['id']} | {r['type']}"
         if r['type'] == 'once': line += f" @ {r['send_time']}"
