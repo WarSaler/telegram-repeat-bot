@@ -84,7 +84,7 @@ def save_reminders(reminders):
 def reminder_callback(context: CallbackContext):
     job: Job = context.job
     data = job.context
-n    chat_id = data['chat_id']
+    chat_id = data['chat_id']
     text = data['text']
     context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML)
 
