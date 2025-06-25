@@ -12,8 +12,8 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import pytz
 import requests
 from telegram import Update, ParseMode
-from telegram.ext import Updater, CommandHandler, CallbackContext, Job
-from telegram.error import Conflict
+from telegram.ext import Updater, CommandHandler, CallbackContext, Job, ConversationHandler, MessageHandler, Filters
+REMINDER_DATE, REMINDER_TEXT = range(2)
 
 # — Настройка логирования —
 logging.basicConfig(
@@ -137,6 +137,44 @@ def error_handler(update: Update, context: CallbackContext):
         return
     logger.error("Необработанная ошибка", exc_info=context.error)
 
+def start_add_one_reminder(update: Update, context: CallbackContext):
+    update.message.reply_text("Введите дату и время для напоминания (YYYY-MM-DD HH:MM) или /cancel для отмены")
+    return REMINDER_DATE
+
+def receive_reminder_datetime(update: Update, context: CallbackContext):
+    text = update.message.text.strip()
+    try:
+        dt = MSK.localize(datetime.datetime.strptime(text, "%Y-%m-%d %H:%M"))
+        if dt <= datetime.datetime.now(MSK):
+            update.message.reply_text("Время должно быть в будущем. Повторите ввод или /cancel")
+            return REMINDER_DATE
+        context.user_data['reminder_dt'] = dt
+        update.message.reply_text("Введите текст напоминания или /cancel для отмены")
+        return REMINDER_TEXT
+    except ValueError:
+        update.message.reply_text("Неверный формат. Используйте YYYY-MM-DD HH:MM или /cancel")
+        return REMINDER_DATE
+
+def receive_reminder_text(update: Update, context: CallbackContext):
+    text = update.message.text
+    dt = context.user_data.pop('reminder_dt')
+    reminders = load_reminders()
+    # assign short incremental ID
+    max_id = max((int(r['id']) for r in reminders), default=0)
+    new_id = str(max_id + 1)
+    rem = {'id': new_id, 'type': 'once', 'chat_id': update.effective_chat.id,
+           'text': text, 'send_time': dt.isoformat()}
+    reminders.append(rem)
+    save_reminders(reminders)
+    delay = (dt - datetime.datetime.now(MSK)).total_seconds()
+    context.job_queue.run_once(reminder_callback, delay, context=rem)
+    update.message.reply_text(f"✅ Напоминание {new_id} установлено на {dt.strftime('%Y-%m-%d %H:%M')}", parse_mode=ParseMode.HTML)
+    return ConversationHandler.END
+
+def cancel_reminder(update: Update, context: CallbackContext):
+    update.message.reply_text("Операция отменена.", parse_mode=ParseMode.HTML)
+    return ConversationHandler.END
+
 # — Команды бота —
 def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
@@ -150,30 +188,30 @@ def start(update: Update, context: CallbackContext):
 def test(update: Update, context: CallbackContext):
     update.message.reply_text("✅ Тестовое напоминание!")
 
-# — Одноразовое напоминание —
-def add_one_reminder(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    args = context.args
-    if len(args) < 3:
-        update.message.reply_text("Использование: /remind YYYY-MM-DD HH:MM текст")
-        return
-    date_str, time_str = args[0], args[1]
-    text = ' '.join(args[2:])
-    try:
-        dt = MSK.localize(datetime.datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M"))
-    except ValueError:
-        update.message.reply_text("Неверный формат даты/времени")
-        return
-    if dt <= datetime.datetime.now(MSK):
-        update.message.reply_text("Время должно быть в будущем.")
-        return
-    rem_id = str(uuid4())
-    rem = {'id': rem_id, 'type': 'once', 'chat_id': chat_id, 'text': text, 'send_time': dt.isoformat()}
-    reminders = load_reminders() + [rem]
-    save_reminders(reminders)
-    delay = (dt - datetime.datetime.now(MSK)).total_seconds()
-    context.job_queue.run_once(reminder_callback, delay, context=rem)
-    update.message.reply_text(f"✅ Одноразовое напоминание {rem_id} установлено на {dt.strftime('%Y-%m-%d %H:%M')}")
+# # — Одноразовое напоминание —
+# def add_one_reminder(update: Update, context: CallbackContext):
+#     chat_id = update.effective_chat.id
+#     args = context.args
+#     if len(args) < 3:
+#         update.message.reply_text("Использование: /remind YYYY-MM-DD HH:MM текст")
+#         return
+#     date_str, time_str = args[0], args[1]
+#     text = ' '.join(args[2:])
+#     try:
+#         dt = MSK.localize(datetime.datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M"))
+#     except ValueError:
+#         update.message.reply_text("Неверный формат даты/времени")
+#         return
+#     if dt <= datetime.datetime.now(MSK):
+#         update.message.reply_text("Время должно быть в будущем.")
+#         return
+#     rem_id = str(uuid4())
+#     rem = {'id': rem_id, 'type': 'once', 'chat_id': chat_id, 'text': text, 'send_time': dt.isoformat()}
+#     reminders = load_reminders() + [rem]
+#     save_reminders(reminders)
+#     delay = (dt - datetime.datetime.now(MSK)).total_seconds()
+#     context.job_queue.run_once(reminder_callback, delay, context=rem)
+#     update.message.reply_text(f"✅ Одноразовое напоминание {rem_id} установлено на {dt.strftime('%Y-%m-%d %H:%M')}")
 
 # — Ежедневное напоминание —
 def add_daily_reminder(update: Update, context: CallbackContext):
@@ -281,7 +319,15 @@ def main():
 
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("test", test))
-    dp.add_handler(CommandHandler("remind", add_one_reminder))
+    conv = ConversationHandler(
+        entry_points=[CommandHandler("remind", start_add_one_reminder)],
+        states={
+            REMINDER_DATE: [MessageHandler(Filters.text & ~Filters.command, receive_reminder_datetime)],
+            REMINDER_TEXT: [MessageHandler(Filters.text & ~Filters.command, receive_reminder_text)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_reminder)],
+    )
+    dp.add_handler(conv)
     dp.add_handler(CommandHandler("remind_daily", add_daily_reminder))
     dp.add_handler(CommandHandler("remind_weekly", add_weekly_reminder))
     dp.add_handler(CommandHandler("list_reminders", list_reminders))
@@ -296,4 +342,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
