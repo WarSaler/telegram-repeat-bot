@@ -180,7 +180,7 @@ def receive_reminder_datetime(update: Update, context: CallbackContext):
         update.message.reply_text("Введите текст напоминания или /cancel для отмены")
         return REMINDER_TEXT
     except ValueError:
-        update.message.reply_text("Неверный формат. Используйте YYYY-MM-DD HH:MM или /cancel")
+        update.message.reply_text("Неверный формат. Используйте формат ГГГГ-ММ-ДД ЧЧ:ММ или /cancel")
         return REMINDER_DATE
 
 def receive_reminder_text(update: Update, context: CallbackContext):
@@ -343,6 +343,26 @@ def list_reminders(update: Update, context: CallbackContext):
         lines.append(line)
     update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
+# — Ближайшее уведомление из SCHEDULE —
+def next_notification(update: Update, context: CallbackContext):
+    now = datetime.datetime.now(MSK)
+    best = None
+    best_delta = None
+    for item in SCHEDULE:
+        hh, mm = map(int, item["time"].split(":"))
+        run_dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if run_dt < now:
+            run_dt += datetime.timedelta(days=1)
+        delta = run_dt - now
+        if best_delta is None or delta < best_delta:
+            best, best_delta = item, delta
+    send_dt = now + best_delta
+    send_str = send_dt.strftime("%d.%m.%Y %H:%M")
+    update.message.reply_text(
+        f"📅 Ближайшее уведомление в {send_str}:\n{best['text']}",
+        parse_mode=ParseMode.HTML
+    )
+
 # — Удаление напоминания по ID —
 def del_reminder(update: Update, context: CallbackContext):
     args = context.args
@@ -400,9 +420,8 @@ def main():
     dp.add_handler(CommandHandler("remind_weekly", add_weekly_reminder))
     dp.add_handler(CommandHandler("list_reminders", list_reminders))
     dp.add_handler(CommandHandler("del_reminder", del_reminder))
-
-    # Только обработчики для /list_reminders, /del_reminder, /clear_reminders
     dp.add_handler(CommandHandler("clear_reminders", clear_reminders))
+    dp.add_handler(CommandHandler("next", next_notification))
 
     # Инициализация дефолтных напоминаний
     init_default_reminders()
