@@ -144,10 +144,13 @@ SCHEDULE = [
 # — Инициализация дефолтных напоминаний на основе SCHEDULE —
 def init_default_reminders():
     reminders = load_reminders()
-    if not reminders:
-        for item in SCHEDULE:
+    updated = False
+    for item in SCHEDULE:
+        if not any(r['id'] == item['id'] for r in reminders):
             rem = {'id': item['id'], 'type': 'daily', 'time': item['time'], 'text': item['text']}
             reminders.append(rem)
+            updated = True
+    if updated:
         save_reminders(reminders)
 
 # — Уведомляем все чаты (боевые уведомления остаются прежними) —
@@ -166,7 +169,7 @@ def error_handler(update: Update, context: CallbackContext):
     logger.error("Необработанная ошибка", exc_info=context.error)
 
 def start_add_one_reminder(update: Update, context: CallbackContext):
-    update.message.reply_text("Введите дату и время для напоминания (YYYY-MM-DD HH:MM) или /cancel для отмены")
+    update.message.reply_text("Введите дату и время напоминания (ГГГГ-ММ-ДД ЧЧ:ММ) или /cancel для отмены")
     return REMINDER_DATE
 
 def receive_reminder_datetime(update: Update, context: CallbackContext):
@@ -212,7 +215,7 @@ def receive_reminder_text(update: Update, context: CallbackContext):
     save_reminders(reminders)
     delay = (dt - datetime.datetime.now(MSK)).total_seconds()
     context.job_queue.run_once(reminder_callback, delay, context=rem)
-    update.message.reply_text(f"✅ Напоминание {new_id} установлено на {dt.strftime('%Y-%m-%d %H:%M')}", parse_mode=ParseMode.HTML)
+    update.message.reply_text(f"✅ Напоминание {new_id} установлено на {dt.strftime('%d.%m.%Y %H:%M')}", parse_mode=ParseMode.HTML)
     return ConversationHandler.END
 
 def cancel_reminder(update: Update, context: CallbackContext):
