@@ -85,9 +85,9 @@ def save_reminders(reminders):
 def reminder_callback(context: CallbackContext):
     job: Job = context.job
     data = job.context
-    chat_id = data['chat_id']
-    text = data['text']
-    context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML)
+    text = data.get('text')
+    # Broadcast to all connected chats instead of single chat
+    broadcast(text, context)
 
     # Если одноразовое, удаляем его
     if data.get('type') == 'once':
@@ -122,6 +122,23 @@ def schedule_all_reminders(job_queue):
                                 time=datetime.time(hh, mm),
                                 days=tuple(days),
                                 context=data)
+
+
+# — Статичные боевые уведомления —
+SCHEDULE = [
+    {"id": "1", "time": "20:50", "text": '🔄 <a href="https://t.me/c/123456/1">Переключить депозиты из таблицы API deposits</a>'},
+    {"id": "2", "time": "20:50", "text": '📢  <a href="https://t.me/c/123456/2">Выключить депозиты BDT_rocket_gb ...</a>'},
+    # Добавьте сюда остальные уведомления с уникальными id
+]
+
+# — Инициализация дефолтных напоминаний на основе SCHEDULE —
+def init_default_reminders():
+    reminders = load_reminders()
+    if not reminders:
+        for item in SCHEDULE:
+            rem = {'id': item['id'], 'type': 'daily', 'time': item['time'], 'text': item['text']}
+            reminders.append(rem)
+        save_reminders(reminders)
 
 # — Уведомляем все чаты (боевые уведомления остаются прежними) —
 def broadcast(text: str, context: CallbackContext):
@@ -324,6 +341,19 @@ def del_reminder(update: Update, context: CallbackContext):
             job.schedule_removal()
     update.message.reply_text(f"✅ Напоминание {rem_id} удалено.")
 
+
+
+# — Команды для управления напоминаниями и статичными уведомлениями —
+def clear_reminders(update: Update, context: CallbackContext):
+    # Delete all user reminders
+    save_reminders([])
+    # Cancel all user reminder jobs
+    for job in context.job_queue.get_jobs():
+        if hasattr(job.context, 'get') and job.context.get('type') in ('once','daily','weekly'):
+            job.schedule_removal()
+    update.message.reply_text("✅ Все пользовательские напоминания удалены.")
+
+
 # — Точка входа —
 def main():
     threading.Thread(target=run_http_server, daemon=True).start()
@@ -350,8 +380,14 @@ def main():
     dp.add_handler(CommandHandler("list_reminders", list_reminders))
     dp.add_handler(CommandHandler("del_reminder", del_reminder))
 
+    # Только обработчики для /list_reminders, /del_reminder, /clear_reminders
+    dp.add_handler(CommandHandler("clear_reminders", clear_reminders))
+
+    # Инициализация дефолтных напоминаний
+    init_default_reminders()
     # Запланировать все сохранённые напоминания
     schedule_all_reminders(updater.job_queue)
+    # schedule_notifications(updater.job_queue)  # Удалено
 
     updater.start_polling(drop_pending_updates=True)
     logger.info("Polling начат, бот готов к работе")
