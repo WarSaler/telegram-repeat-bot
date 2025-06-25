@@ -126,19 +126,19 @@ def schedule_all_reminders(job_queue):
 
 # — Статичные боевые уведомления —
 SCHEDULE = [
-    {"id": "1", "time": "20:50", "text": '🔄 <a href="https://t.me/c/123456/1">Переключить депозиты из таблицы API deposits</a>'},
-    {"id": "2", "time": "20:50", "text": '📢  <a href="https://t.me/c/123456/2">Выключить депозиты BDT_rocket_gb ...</a>'},
-    {"id": "3", "time": "20:51", "text": '📊 <a href="https://t.me/c/123456/3">Обновить статистику по депозитам</a>'},
-    {"id": "4", "time": "21:00", "text": '⚠️ <a href="https://t.me/c/123456/4">Проверить просроченные задачи</a>'},
-    {"id": "5", "time": "21:15", "text": '🛠️ <a href="https://t.me/c/123456/5">Запустить техобслуживание</a>'},
-    {"id": "6", "time": "21:30", "text": '🔔 <a href="https://t.me/c/123456/6">Отправить напоминание команде</a>'},
-    {"id": "7", "time": "22:00", "text": '📅 <a href="https://t.me/c/123456/7">План на завтра</a>'},
-    {"id": "8", "time": "22:30", "text": '✅ <a href="https://t.me/c/123456/8">Подтвердить выполнение задач</a>'},
-    {"id": "9", "time": "23:00", "text": '📢 <a href="https://t.me/c/123456/9">Отчёт за день</a>'},
-    {"id": "10", "time": "23:30", "text": '🕒 <a href="https://t.me/c/123456/10">Проверить время работы</a>'},
-    {"id": "11", "time": "23:45", "text": '📈 <a href="https://t.me/c/123456/11">Анализ производительности</a>'},
-    {"id": "12", "time": "23:50", "text": '🚀 <a href="https://t.me/c/123456/12">Запуск новых функций</a>'},
-    {"id": "13", "time": "23:55", "text": '🔒 <a href="https://t.me/c/123456/13">Обновление безопасности</a>'},
+    {"id": "1",  "time": "20:50", "text": '🔄 <a href="https://docs.google.com/spreadsheets/d/1LggaqDZjPwGGj7Mqher4D6mHhgmhL1Ed/edit?pli=1&gid=1095733793">Переключить депозиты из таблицы API deposits</a>'},
+    {"id": "2",  "time": "20:50", "text": '📢  <a href="https://mostbet2.com/admin/app/paymentroute/list?filter%5BpaymentMethod%5D%5Bvalue%5D=rocket_gb">Выключить депозиты BDT_rocket_gb в админке</a> (либо попросить коллегу)\n✅<b>Уведомление в авто методы:</b>\n Выключили BDT_rocket_gb на сайте\n@jurxis @nii_med @gnxt_monitoring @Lika_mbt @Vikgmbt'},
+    {"id": "3",  "time": "21:55", "text": '❌ <a href="https://mostbet2.com/admin/payout-route/list?filter%5BpayoutMethod%5D%5Bvalue%5D=khalti_birpay">Выключить метод выплат Khalti_birpay в админке</a>'},
+    {"id": "4",  "time": "22:20", "text": '🔄 <a href="https://docs.google.com/spreadsheets/d/1LggaqDZjPwGGj7Mqher4D6mHhgmhL1Ed/edit?pli=1&gid=1393952854">Сделать переключение депозитов BDT</a>'},
+    {"id": "5",  "time": "02:45", "text": '🔄 <a href="https://docs.google.com/spreadsheets/d/1LggaqDZjPwGGj7Mqher4D6mHhgmhL1Ed/edit?pli=1&gid=1393952854">Сделать переключение ручных депозитов BDT</a>'},
+    {"id": "6",  "time": "02:50", "text": '⚠️ <a href="https://docs.google.com/spreadsheets/d/1bmnhijfGGcA9Vp1Zkw07JoOFCE6IJk0U/edit?pli=1&gid=1749528799">Выключить депозиты и выплаты агента Naji_MAD</a>'},
+    {"id": "7",  "time": "02:55", "text": '✅ <a href="https://docs.google.com/spreadsheets/d/1LggaqDZjPwGGj7Mqher4D6mHhgmhL1Ed/edit?pli=1&gid=1095733793">Включить API депозиты по BDT</a>'},
+    {"id": "8",  "time": "02:55", "text": '🔄 <a href="https://mostbet2.com/admin/app/paymentroute/list?filter%5BpaymentMethod%5D%5Bvalue%5D=rocket_gb">Включить депозиты BDT_rocket_gb в админке</a>\n📢 Авто методы: Включили BDT_rocket_gb на сайте\n@jurxis @nii_med @gnxt_monitoring @Lika_mbt @Vikgmbt'},
+    {"id": "9",  "time": "06:20", "text": '🔒 <a href="https://docs.google.com/spreadsheets/d/1J89GcldOX_xfqxNVhzhcjIGmuQ40Y01QsoMbJWDstCU/edit?pli=1&gid=2063840569">Выключить реквизиты и выплаты шифтовых агентов Индии</a>'},
+    {"id": "10", "time": "11:20", "text": '🔄 <a href="https://docs.google.com/spreadsheets/d/1LggaqDZjPwGGj7Mqher4D6mHhgmhL1Ed/edit?pli=1&gid=1393952854">Сделать переключение депозитов BDT</a>'},
+    {"id": "11", "time": "18:20", "text": '🔄 <a href="https://docs.google.com/spreadsheets/d/1LggaqDZjPwGGj7Mqher4D6mHhgmhL1Ed/edit?pli=1&gid=1393952854">Сделать переключение депозитов BDT</a>'},
+    {"id": "12", "time": "10:00", "text": '📊 <a href="https://new.admgrnb.com/greenback/payment-orders">Регулярная выгрузка! До 12:00 МСК выгрузка аппрувнутых депозитов из Greenback</a>'},
+    {"id": "13", "time": "10:00", "text": '🗓️ <b>По понедельникам до 12:00 МСК:</b> отправляем Шамилю 3 выгрузки\n<a href="https://confluence.dats.tech/pages/viewpage.action?pageId=760321781#id-%D0%92%D1%8B%D0%B3%D1%80%D1%83%D0%B7%D0%BA%D0%B8Birpay-%D0%92%D1%8B%D0%B3%D1%80%D1%83%D0%B7%D0%BA%D0%B0%D0%B4%D0%B5%D0%BF%D0%BE%D0%B7%D0%B8%D1%82%D0%BE%D0%B2%D0%A8%D0%B0%D0%BC%D0%B8%D0%BB%D1%8E(%D1%82%D0%B8%D0%BA%D0%B5%D1%82%D1%8B%D0%B0%D0%BC%D0%B1%D0%B1%D1%81%D0%B4%D0%B5%D0%BA%D0%BB%D0%B0%D0%B9%D0%BD%D0%B0)-%D0%BE%D1%82%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D1%8F%D0%B5%D0%BC%D0%A8%D0%B0%D0%BC%D0%B8%D0%BB%D1%8E%D0%BA%D0%B0%D0%B6%D0%B4%D1%8B%D0%B9%D0%BF%D0%BE%D0%BD%D0%B5%D0%B4%D0%B5%D0%BB%D1%8C%D0%BD%D0%B8%D0%BA%D0%B4%D0%BE12:00%D0%B7%D0%B0%D0%BF%D1%80%D0%B5%D0%B4%D1%8B%D0%B4%D1%83%D1%89%D1%83%D1%8E%D0%BD%D0%B5%D0%B4%D0%B5%D0%BB%D1%8E">Ссылка на инструкцию</a>'},
 ]
 
 # — Инициализация дефолтных напоминаний на основе SCHEDULE —
