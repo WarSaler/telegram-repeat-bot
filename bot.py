@@ -144,13 +144,10 @@ SCHEDULE = [
 # — Инициализация дефолтных напоминаний на основе SCHEDULE —
 def init_default_reminders():
     reminders = load_reminders()
-    updated = False
-    for item in SCHEDULE:
-        if not any(r['id'] == item['id'] for r in reminders):
-            rem = {'id': item['id'], 'type': 'daily', 'time': item['time'], 'text': item['text']}
+    if not reminders:
+        for item in SCHEDULE:
+            rem = {'id': item['id'], 'type': 'daily', 'time': item['time'], 'text': item['text'], 'source': 'default'}
             reminders.append(rem)
-            updated = True
-    if updated:
         save_reminders(reminders)
 
 # — Уведомляем все чаты (боевые уведомления остаются прежними) —
@@ -169,13 +166,13 @@ def error_handler(update: Update, context: CallbackContext):
     logger.error("Необработанная ошибка", exc_info=context.error)
 
 def start_add_one_reminder(update: Update, context: CallbackContext):
-    update.message.reply_text("Введите дату и время напоминания (ГГГГ-ММ-ДД ЧЧ:ММ) или /cancel для отмены")
+    update.message.reply_text("Введите дату и время напоминания (ДД.MM.ГГГГ ЧЧ:ММ) или /cancel для отмены")
     return REMINDER_DATE
 
 def receive_reminder_datetime(update: Update, context: CallbackContext):
     text = update.message.text.strip()
     try:
-        dt = MSK.localize(datetime.datetime.strptime(text, "%Y-%m-%d %H:%M"))
+        dt = MSK.localize(datetime.datetime.strptime(text, "%d.%m.%Y %H:%M"))
         if dt <= datetime.datetime.now(MSK):
             update.message.reply_text("Время должно быть в будущем. Повторите ввод или /cancel")
             return REMINDER_DATE
@@ -183,7 +180,7 @@ def receive_reminder_datetime(update: Update, context: CallbackContext):
         update.message.reply_text("Введите текст напоминания или /cancel для отмены")
         return REMINDER_TEXT
     except ValueError:
-        update.message.reply_text("Неверный формат. Используйте формат ГГГГ-ММ-ДД ЧЧ:ММ или /cancel")
+        update.message.reply_text("Неверный формат. Используйте формат ДД.MM.ГГГГ ЧЧ:ММ или /cancel")
         return REMINDER_DATE
 
 def receive_reminder_text(update: Update, context: CallbackContext):
@@ -210,7 +207,7 @@ def receive_reminder_text(update: Update, context: CallbackContext):
     max_id = max((int(r['id']) for r in reminders), default=0)
     new_id = str(max_id + 1)
     rem = {'id': new_id, 'type': 'once', 'chat_id': update.effective_chat.id,
-           'text': text, 'send_time': dt.isoformat()}
+           'text': text, 'send_time': dt.isoformat(), 'source': 'user'}
     reminders.append(rem)
     save_reminders(reminders)
     delay = (dt - datetime.datetime.now(MSK)).total_seconds()
@@ -275,7 +272,7 @@ def add_daily_reminder(update: Update, context: CallbackContext):
         update.message.reply_text("Неверный формат времени")
         return
     rem_id = str(uuid4())
-    rem = {'id': rem_id, 'type': 'daily', 'chat_id': chat_id, 'text': text, 'time': time_str}
+    rem = {'id': rem_id, 'type': 'daily', 'chat_id': chat_id, 'text': text, 'time': time_str, 'source': 'user'}
     reminders = load_reminders() + [rem]
     save_reminders(reminders)
     context.job_queue.run_daily(reminder_callback,
@@ -308,7 +305,8 @@ def add_weekly_reminder(update: Update, context: CallbackContext):
         'chat_id': chat_id,
         'text': text,
         'time': time_str,
-        'days': [days_map[day_str]]
+        'days': [days_map[day_str]],
+        'source': 'user'
     }
     reminders = load_reminders() + [rem]
     save_reminders(reminders)
@@ -389,13 +387,15 @@ def del_reminder(update: Update, context: CallbackContext):
 
 # — Команды для управления напоминаниями и статичными уведомлениями —
 def clear_reminders(update: Update, context: CallbackContext):
-    # Delete all user reminders
-    save_reminders([])
-    # Cancel all user reminder jobs
+    reminders = load_reminders()
+    # keep only defaults
+    new = [r for r in reminders if r.get('source') == 'default']
+    save_reminders(new)
+    # cancel only user jobs
     for job in context.job_queue.get_jobs():
-        if hasattr(job.context, 'get') and job.context.get('type') in ('once','daily','weekly'):
+        if getattr(job.context, 'get', lambda k: None)('source') == 'user':
             job.schedule_removal()
-    update.message.reply_text("✅ Все пользовательские напоминания удалены.")
+    update.message.reply_text("✅ Все напоминания пользователя удалены.")
 
 
 # — Точка входа —
