@@ -128,7 +128,17 @@ def schedule_all_reminders(job_queue):
 SCHEDULE = [
     {"id": "1", "time": "20:50", "text": '🔄 <a href="https://t.me/c/123456/1">Переключить депозиты из таблицы API deposits</a>'},
     {"id": "2", "time": "20:50", "text": '📢  <a href="https://t.me/c/123456/2">Выключить депозиты BDT_rocket_gb ...</a>'},
-    # Добавьте сюда остальные уведомления с уникальными id
+    {"id": "3", "time": "20:51", "text": '📊 <a href="https://t.me/c/123456/3">Обновить статистику по депозитам</a>'},
+    {"id": "4", "time": "21:00", "text": '⚠️ <a href="https://t.me/c/123456/4">Проверить просроченные задачи</a>'},
+    {"id": "5", "time": "21:15", "text": '🛠️ <a href="https://t.me/c/123456/5">Запустить техобслуживание</a>'},
+    {"id": "6", "time": "21:30", "text": '🔔 <a href="https://t.me/c/123456/6">Отправить напоминание команде</a>'},
+    {"id": "7", "time": "22:00", "text": '📅 <a href="https://t.me/c/123456/7">План на завтра</a>'},
+    {"id": "8", "time": "22:30", "text": '✅ <a href="https://t.me/c/123456/8">Подтвердить выполнение задач</a>'},
+    {"id": "9", "time": "23:00", "text": '📢 <a href="https://t.me/c/123456/9">Отчёт за день</a>'},
+    {"id": "10", "time": "23:30", "text": '🕒 <a href="https://t.me/c/123456/10">Проверить время работы</a>'},
+    {"id": "11", "time": "23:45", "text": '📈 <a href="https://t.me/c/123456/11">Анализ производительности</a>'},
+    {"id": "12", "time": "23:50", "text": '🚀 <a href="https://t.me/c/123456/12">Запуск новых функций</a>'},
+    {"id": "13", "time": "23:55", "text": '🔒 <a href="https://t.me/c/123456/13">Обновление безопасности</a>'},
 ]
 
 # — Инициализация дефолтных напоминаний на основе SCHEDULE —
@@ -313,12 +323,23 @@ def list_reminders(update: Update, context: CallbackContext):
         update.message.reply_text("У вас нет активных напоминаний.")
         return
     lines = ["📋 <b>Все активные напоминания:</b>"]
+    ru_types = {'once': 'одноразовое', 'daily': 'ежедневное', 'weekly': 'еженедельное'}
+    ru_days = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс']
     for r in reminders:
-        line = f"ID: {r['id']} | {r['type']}"
-        if r['type'] == 'once': line += f" @ {r['send_time']}"
-        else: line += f" @ {r['time']}"
-        if r['type'] == 'weekly': line += f" on {r['days']}"
-        line += f" → {r['text']}"
+        typ = r.get('type', '')
+        typ_ru = ru_types.get(typ, typ)
+        if typ == 'once':
+            dt = datetime.datetime.fromisoformat(r['send_time']).astimezone(MSK)
+            time_str = dt.strftime("%d.%m.%Y %H:%M")
+            line = f"ID: {r['id']} | {typ_ru} @ {time_str} → {r['text']}"
+        elif typ == 'daily':
+            line = f"ID: {r['id']} | {typ_ru} @ {r['time']} → {r['text']}"
+        elif typ == 'weekly':
+            day_num = r.get('days', [None])[0]
+            day_ru = ru_days[day_num] if day_num is not None and 0 <= day_num < 7 else "?"
+            line = f"ID: {r['id']} | {typ_ru} {day_ru} @ {r['time']} → {r['text']}"
+        else:
+            line = f"ID: {r['id']} | {typ_ru} → {r['text']}"
         lines.append(line)
     update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
