@@ -41,18 +41,6 @@ REMINDERS_FILE  = 'reminders.json'
 MSK = pytz.timezone("Europe/Moscow")
 
 
-# — Keep-alive, чтобы контейнер не спал —
-def keep_alive():
-    if not BASE_URL:
-        logger.warning("BASE_URL не задан, keep-alive отключён")
-        return
-    while True:
-        try:
-            requests.get(BASE_URL, timeout=5)
-            logger.info("Keep-alive pinged %s", BASE_URL)
-        except Exception as e:
-            logger.warning("Keep-alive failed: %s", e)
-        time.sleep(300)
 
 # — Работа с файлами (чаты и напоминания) —
 def load_chats():
@@ -481,16 +469,15 @@ def clear_reminders(update: Update, context: CallbackContext):
 
 # — Точка входа —
 def main():
-    # threading.Thread(target=keep_alive, daemon=True).start()  # Optional: uncomment if you want keep_alive
-
     updater = Updater(token=BOT_TOKEN, use_context=True)
     updater.bot.delete_webhook()
-    updater.bot.set_webhook(BASE_URL)
+    webhook_url = BASE_URL + "/" + BOT_TOKEN
+    logger.info(f"Устанавливаем webhook_url: {webhook_url}")
     updater.start_webhook(
         listen="0.0.0.0",
         port=PORT,
-        url_path="",
-        webhook_url=BASE_URL
+        url_path=BOT_TOKEN,
+        webhook_url=webhook_url
     )
     dp = updater.dispatcher
     dp.add_error_handler(error_handler)
@@ -510,8 +497,6 @@ def main():
         allow_reentry=True,
     )
     dp.add_handler(conv)
-    # dp.add_handler(CommandHandler("remind_daily", add_daily_reminder))
-    # dp.add_handler(CommandHandler("remind_weekly", add_weekly_reminder))
     conv_daily = ConversationHandler(
         entry_points=[CommandHandler("remind_daily", start_add_daily_reminder)],
         states={
