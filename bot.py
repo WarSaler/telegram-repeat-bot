@@ -14,6 +14,10 @@ import requests
 from telegram import Update, ParseMode
 from telegram.ext import Updater, CommandHandler, CallbackContext, Job, ConversationHandler, MessageHandler, Filters
 import html
+from telegram.ext import MessageHandler
+def subscribe_and_pass(update: Update, context: CallbackContext):
+    # ensure this chat is subscribed for broadcasts
+    subscribe_chat(update.effective_chat.id)
 REMINDER_DATE, REMINDER_TEXT = range(2)
 DAILY_TIME, DAILY_TEXT = range(2, 4)
 WEEKLY_DAY, WEEKLY_TIME, WEEKLY_TEXT = range(4, 7)
@@ -493,6 +497,9 @@ def main():
     dp = updater.dispatcher
     dp.add_error_handler(error_handler)
 
+    # auto-subscribe any chat when a command is used
+    dp.add_handler(MessageHandler(Filters.command, subscribe_and_pass), group=0)
+
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("test", test))
     conv = ConversationHandler(
@@ -502,6 +509,7 @@ def main():
             REMINDER_TEXT: [MessageHandler(Filters.text & ~Filters.command, receive_reminder_text)],
         },
         fallbacks=[CommandHandler("cancel", cancel_reminder)],
+        allow_reentry=True,
     )
     dp.add_handler(conv)
     # dp.add_handler(CommandHandler("remind_daily", add_daily_reminder))
@@ -513,6 +521,7 @@ def main():
             DAILY_TEXT: [MessageHandler(Filters.text & ~Filters.command, receive_daily_text)],
         },
         fallbacks=[CommandHandler("cancel", cancel_reminder)],
+        allow_reentry=True,
     )
     dp.add_handler(conv_daily)
 
@@ -524,6 +533,7 @@ def main():
             WEEKLY_TEXT: [MessageHandler(Filters.text & ~Filters.command, receive_weekly_text)],
         },
         fallbacks=[CommandHandler("cancel", cancel_reminder)],
+        allow_reentry=True,
     )
     dp.add_handler(conv_weekly)
     dp.add_handler(CommandHandler("list_reminders", list_reminders))
