@@ -6,7 +6,6 @@ import threading
 import time
 import datetime
 import json
-from uuid import uuid4
 import pytz
 import requests
 from telegram import Update, ParseMode
@@ -14,6 +13,9 @@ from telegram.ext import Updater, CommandHandler, CallbackContext, Job, Conversa
 import html
 from telegram.ext import MessageHandler
 from telegram.error import Conflict
+
+# --- Глобальный файл напоминаний ---
+REMINDERS_FILE = "reminders.json"
 
 logging.basicConfig(
     format="%(asctime)s — %(levelname)s — %(message)s",
@@ -76,19 +78,16 @@ DAILY_TIME, DAILY_TEXT = range(2)
 WEEKLY_DAY, WEEKLY_TIME, WEEKLY_TEXT = range(3)
 REM_DEL_ID = 0
 
-# --- Вспомогательные функции для хранения напоминаний (можно заменить на вашу реализацию) ---
-def get_reminders_filename(chat_id):
-    return f"reminders_{chat_id}.json"
-
-def load_reminders(chat_id):
+# --- Вспомогательные функции для хранения напоминаний (глобальный список) ---
+def load_reminders():
     try:
-        with open(get_reminders_filename(chat_id), "r") as f:
+        with open(REMINDERS_FILE, "r") as f:
             return json.load(f)
     except FileNotFoundError:
         return []
 
-def save_reminders(chat_id, reminders):
-    with open(get_reminders_filename(chat_id), "w") as f:
+def save_reminders(reminders):
+    with open(REMINDERS_FILE, "w") as f:
         json.dump(reminders, f)
 
 # --- Обработчики добавления разового напоминания ---
@@ -111,19 +110,16 @@ def receive_reminder_datetime(update: Update, context: CallbackContext):
         return REMINDER_DATE
 
 def receive_reminder_text(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    text = update.message.text.strip()
-    dt_str = context.user_data.get("reminder_datetime")
-    reminders = load_reminders(chat_id)
-    reminder_id = str(uuid4())
+    reminders = load_reminders()
+    new_id = str(len(reminders) + 1)
     reminders.append({
-        "id": reminder_id,
+        "id": new_id,
         "type": "once",
-        "datetime": dt_str,
-        "text": text
+        "datetime": context.user_data["reminder_datetime"],
+        "text": update.message.text.strip()
     })
-    save_reminders(chat_id, reminders)
-    update.message.reply_text(f"✅ Напоминание добавлено: {dt_str}\n{text}")
+    save_reminders(reminders)
+    update.message.reply_text(f"✅ Напоминание {new_id} добавлено: {context.user_data['reminder_datetime']}\n{update.message.text}")
     return ConversationHandler.END
 
 # --- Обработчики добавления ежедневного напоминания ---
@@ -143,19 +139,16 @@ def receive_daily_time(update: Update, context: CallbackContext):
         return DAILY_TIME
 
 def receive_daily_text(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    text = update.message.text.strip()
-    time_str = context.user_data.get("daily_time")
-    reminders = load_reminders(chat_id)
-    reminder_id = str(uuid4())
+    reminders = load_reminders()
+    new_id = str(len(reminders) + 1)
     reminders.append({
-        "id": reminder_id,
+        "id": new_id,
         "type": "daily",
-        "time": time_str,
-        "text": text
+        "time": context.user_data["daily_time"],
+        "text": update.message.text.strip()
     })
-    save_reminders(chat_id, reminders)
-    update.message.reply_text(f"✅ Ежедневное напоминание добавлено: {time_str}\n{text}")
+    save_reminders(reminders)
+    update.message.reply_text(f"✅ Ежедневное напоминание {new_id} добавлено: {context.user_data['daily_time']}\n{update.message.text}")
     return ConversationHandler.END
 
 # --- Обработчики добавления еженедельного напоминания ---
@@ -185,86 +178,74 @@ def receive_weekly_time(update: Update, context: CallbackContext):
         return WEEKLY_TIME
 
 def receive_weekly_text(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    text = update.message.text.strip()
-    day = context.user_data.get("weekly_day")
-    time_str = context.user_data.get("weekly_time")
-    reminders = load_reminders(chat_id)
-    reminder_id = str(uuid4())
+    reminders = load_reminders()
+    new_id = str(len(reminders) + 1)
     reminders.append({
-        "id": reminder_id,
+        "id": new_id,
         "type": "weekly",
-        "day": day,
-        "time": time_str,
-        "text": text
+        "day": context.user_data["weekly_day"],
+        "time": context.user_data["weekly_time"],
+        "text": update.message.text.strip()
     })
-    save_reminders(chat_id, reminders)
-    update.message.reply_text(f"✅ Еженедельное напоминание добавлено: {day.title()} {time_str}\n{text}")
+    save_reminders(reminders)
+    update.message.reply_text(f"✅ Еженедельное напоминание {new_id} добавлено: {context.user_data['weekly_day'].title()} {context.user_data['weekly_time']}\n{update.message.text}")
     return ConversationHandler.END
 
 # --- Список напоминаний ---
 def list_reminders(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    reminders = load_reminders(chat_id)
+    reminders = load_reminders()
     if not reminders:
         update.message.reply_text("У вас нет напоминаний.")
         return
     lines = []
-    for idx, r in enumerate(reminders, 1):
+    for r in reminders:
         if r["type"] == "once":
-            lines.append(f"{idx}. [Разово] {r['datetime']}: {r['text']}")
+            lines.append(f"{r['id']}. [Разово] {r['datetime']}: {r['text']}")
         elif r["type"] == "daily":
-            lines.append(f"{idx}. [Ежедневно] {r['time']}: {r['text']}")
+            lines.append(f"{r['id']}. [Ежедневно] {r['time']}: {r['text']}")
         elif r["type"] == "weekly":
-            lines.append(f"{idx}. [Еженедельно] {r['day'].title()} {r['time']}: {r['text']}")
+            lines.append(f"{r['id']}. [Еженедельно] {r['day'].title()} {r['time']}: {r['text']}")
     update.message.reply_text("\n".join(lines))
 
 # --- Удаление напоминания ---
 def start_delete_reminder(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    reminders = load_reminders(chat_id)
+    reminders = load_reminders()
     if not reminders:
         update.message.reply_text("У вас нет напоминаний для удаления.")
         return ConversationHandler.END
     lines = []
-    for idx, r in enumerate(reminders, 1):
+    for r in reminders:
         if r["type"] == "once":
-            lines.append(f"{idx}. [Разово] {r['datetime']}: {r['text']}")
+            lines.append(f"{r['id']}. [Разово] {r['datetime']}: {r['text']}")
         elif r["type"] == "daily":
-            lines.append(f"{idx}. [Ежедневно] {r['time']}: {r['text']}")
+            lines.append(f"{r['id']}. [Ежедневно] {r['time']}: {r['text']}")
         elif r["type"] == "weekly":
-            lines.append(f"{idx}. [Еженедельно] {r['day'].title()} {r['time']}: {r['text']}")
-    update.message.reply_text("Выберите номер напоминания для удаления:\n" + "\n".join(lines))
+            lines.append(f"{r['id']}. [Еженедельно] {r['day'].title()} {r['time']}: {r['text']}")
+    update.message.reply_text("Введите ID напоминания для удаления:\n" + "\n".join(lines))
     return REM_DEL_ID
 
 def confirm_delete_reminder(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    reminders = load_reminders(chat_id)
-    try:
-        idx = int(update.message.text.strip()) - 1
-        if idx < 0 or idx >= len(reminders):
-            raise ValueError
-        removed = reminders.pop(idx)
-        save_reminders(chat_id, reminders)
-        update.message.reply_text("✅ Напоминание удалено.")
-    except Exception:
-        update.message.reply_text("Некорректный номер. Операция отменена.")
+    rid = update.message.text.strip()
+    reminders = load_reminders()
+    new_list = [r for r in reminders if r["id"] != rid]
+    if len(new_list) == len(reminders):
+        update.message.reply_text("ID не найден. Операция отменена.")
+    else:
+        save_reminders(new_list)
+        update.message.reply_text(f"✅ Напоминание {rid} удалено.")
     return ConversationHandler.END
 
 # --- Очистка всех напоминаний ---
 def clear_reminders(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    save_reminders(chat_id, [])
+    save_reminders([])
     update.message.reply_text("Все напоминания удалены.")
 
 # --- Следующее напоминание ---
 def next_notification(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    reminders = load_reminders(chat_id)
+    reminders = load_reminders()
     if not reminders:
         update.message.reply_text("Нет запланированных напоминаний.")
         return
-    # Найти ближайшее напоминание
     now = datetime.datetime.now()
     soonest = None
     soonest_time = None
@@ -307,6 +288,57 @@ def cancel_reminder(update: Update, context: CallbackContext):
     """
     update.message.reply_text("❌ Операция отменена.")
     return ConversationHandler.END
+
+
+# --- Scheduling helpers ---
+from datetime import datetime, time as dt_time, timedelta
+
+def send_reminder(context: CallbackContext):
+    """
+    Отправляет текст напоминания всем подписанным чатам.
+    """
+    reminder = context.job.context
+    with open("subscribed_chats.json", "r") as f:
+        chats = json.load(f)
+    for cid in chats:
+        context.bot.send_message(chat_id=cid, text=reminder["text"], parse_mode=ParseMode.HTML)
+    if reminder["type"] == "once":
+        reminders = load_reminders()
+        reminders = [r for r in reminders if r["id"] != reminder["id"]]
+        save_reminders(reminders)
+
+def schedule_reminder(job_queue, reminder):
+    """
+    Добавляет задание в JobQueue для данного напоминания.
+    """
+    if reminder["type"] == "once":
+        run_dt = datetime.strptime(reminder["datetime"], "%Y-%m-%d %H:%M")
+        job_queue.run_once(send_reminder, run_dt, context=reminder)
+    elif reminder["type"] == "daily":
+        h, m = map(int, reminder["time"].split(":"))
+        job_queue.run_daily(send_reminder, dt_time(hour=h, minute=m), context=reminder, name=reminder["id"])
+    elif reminder["type"] == "weekly":
+        days_map = {
+            "понедельник": 0, "вторник": 1, "среда": 2,
+            "четверг": 3, "пятница": 4, "суббота": 5, "воскресенье": 6
+        }
+        weekday = days_map[reminder["day"].lower()]
+        h, m = map(int, reminder["time"].split(":"))
+        job_queue.run_daily(
+            send_reminder,
+            dt_time(hour=h, minute=m),
+            context=reminder,
+            days=(weekday,),
+            name=reminder["id"]
+        )
+
+def schedule_all_reminders(job_queue):
+    """
+    Загружает все напоминания и запланировывает их.
+    """
+    reminders = load_reminders()
+    for reminder in reminders:
+        schedule_reminder(job_queue, reminder)
 
 def main():
     updater = Updater(token=os.environ['BOT_TOKEN'], use_context=True)
