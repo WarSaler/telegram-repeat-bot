@@ -48,6 +48,27 @@ def subscribe_and_pass(update: Update, context: CallbackContext):
     """
     subscribe_chat(update.effective_chat.id)
 
+# --- /start и /test команды ---
+def start(update: Update, context: CallbackContext):
+    """
+    Обработчик команды /start.
+    """
+    chat_id = update.effective_chat.id
+    subscribe_chat(chat_id)
+    context.bot.send_message(chat_id=chat_id,
+                             text="Привет! Я бот-напоминатель, используй /remind для создания напоминаний.",
+                             parse_mode=ParseMode.HTML)
+
+def test(update: Update, context: CallbackContext):
+    """
+    Обработчик команды /test для проверки работы бота.
+    """
+    chat_id = update.effective_chat.id
+    subscribe_chat(chat_id)
+    context.bot.send_message(chat_id=chat_id,
+                             text="✅ Бот работает корректно!",
+                             parse_mode=ParseMode.HTML)
+
 # ... все ваши функции (оставьте как есть) ...
 
 def main():
