@@ -1,17 +1,23 @@
 # bot.py
 
 import os
+import json
 import logging
 import threading
 import time
 import datetime
-import json
 import pytz
 import requests
 from telegram import Update, ParseMode
 from telegram.ext import Updater, CommandHandler, CallbackContext, Job, ConversationHandler, MessageHandler, Filters
 import html
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+# --- Ensure storage files exist ---
+for fname, default in [("subscribed_chats.json", []), ("reminders.json", [])]:
+    if not os.path.exists(fname):
+        with open(fname, "w") as f:
+            json.dump(default, f)
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
