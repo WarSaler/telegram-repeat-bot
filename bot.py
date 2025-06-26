@@ -155,8 +155,8 @@ def broadcast(text: str, context: CallbackContext):
 # — Обработчик ошибок —
 def error_handler(update: Update, context: CallbackContext):
     err = context.error
-    # ignore Conflict errors when polling
-    if isinstance(err, Conflict):
+    # ignore polling conflicts
+    if err and err.__class__.__name__ == 'Conflict':
         return
     logger.error("Uncaught exception:", exc_info=err)
 
@@ -554,8 +554,16 @@ def main():
     schedule_all_reminders(updater.job_queue)
     # schedule_notifications(updater.job_queue)  # Удалено
 
-    updater.start_polling(drop_pending_updates=True)
-    logger.info("Polling начат, бот готов к работе")
+    # Switch to webhook on Render to avoid polling conflicts
+    updater.bot.delete_webhook()
+    updater.bot.set_webhook(BASE_URL)
+    updater.start_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path="",
+        webhook_url=BASE_URL
+    )
+    logger.info("Webhook запущен, бот готов к работе")
     updater.idle()
 
 if __name__ == "__main__":
