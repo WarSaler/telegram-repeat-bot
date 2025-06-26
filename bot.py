@@ -7,7 +7,6 @@ import time
 import datetime
 import json
 from uuid import uuid4
-from http.server import HTTPServer, BaseHTTPRequestHandler
 
 import pytz
 import requests
@@ -41,16 +40,6 @@ REMINDERS_FILE  = 'reminders.json'
 # — Московская зона (для времени напоминаний) —
 MSK = pytz.timezone("Europe/Moscow")
 
-# — HTTP-healthcheck для Render —
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
-
-# — Запуск HTTP-сервера —
-def run_http_server():
-    HTTPServer(('0.0.0.0', PORT), HealthHandler).serve_forever()
 
 # — Keep-alive, чтобы контейнер не спал —
 def keep_alive():
@@ -492,11 +481,17 @@ def clear_reminders(update: Update, context: CallbackContext):
 
 # — Точка входа —
 def main():
-    threading.Thread(target=run_http_server, daemon=True).start()
-    threading.Thread(target=keep_alive, daemon=True).start()
+    # threading.Thread(target=keep_alive, daemon=True).start()  # Optional: uncomment if you want keep_alive
 
     updater = Updater(token=BOT_TOKEN, use_context=True)
     updater.bot.delete_webhook()
+    updater.bot.set_webhook(BASE_URL)
+    updater.start_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path="",
+        webhook_url=BASE_URL
+    )
     dp = updater.dispatcher
     dp.add_error_handler(error_handler)
 
@@ -552,17 +547,7 @@ def main():
 
     # Запланировать все сохранённые напоминания
     schedule_all_reminders(updater.job_queue)
-    # schedule_notifications(updater.job_queue)  # Удалено
 
-    # Switch to webhook on Render to avoid polling conflicts
-    updater.bot.delete_webhook()
-    updater.bot.set_webhook(BASE_URL)
-    updater.start_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path="",
-        webhook_url=BASE_URL
-    )
     logger.info("Webhook запущен, бот готов к работе")
     updater.idle()
 
