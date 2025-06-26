@@ -27,6 +27,27 @@ def error_handler(update: Update, context: CallbackContext):
     """
     logger.error("Uncaught exception:", exc_info=context.error)
 
+def subscribe_chat(chat_id):
+    try:
+        with open("subscribed_chats.json", "r") as f:
+            chats = json.load(f)
+    except FileNotFoundError:
+        chats = []
+
+    if chat_id not in chats:
+        chats.append(chat_id)
+        save_chats(chats)
+
+def save_chats(chats):
+    with open("subscribed_chats.json", "w") as f:
+        json.dump(chats, f)
+
+def subscribe_and_pass(update: Update, context: CallbackContext):
+    """
+    Автоподписка текущего чата на рассылку при вводе любой команды.
+    """
+    subscribe_chat(update.effective_chat.id)
+
 # ... все ваши функции (оставьте как есть) ...
 
 def main():
