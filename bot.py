@@ -180,12 +180,18 @@ def receive_reminder_text(update: Update, context: CallbackContext):
     # append any remaining text
     html_text += html.escape(raw[last:])
     text = html_text
+    # Подписать текущий чат для рассылки
+    chat_id = update.effective_chat.id
+    chats = load_chats()
+    if chat_id not in chats:
+        chats.append(chat_id)
+        save_chats(chats)
     dt = context.user_data.pop('reminder_dt')
     reminders = load_reminders()
     # assign short incremental ID
     max_id = max((int(r['id']) for r in reminders), default=0)
     new_id = str(max_id + 1)
-    rem = {'id': new_id, 'type': 'once', 'chat_id': update.effective_chat.id,
+    rem = {'id': new_id, 'type': 'once', 'chat_id': chat_id,
            'text': text, 'send_time': dt.isoformat(), 'source': 'user'}
     reminders.append(rem)
     save_reminders(reminders)
@@ -211,7 +217,6 @@ def receive_daily_time(update: Update, context: CallbackContext):
     return DAILY_TEXT
 
 def receive_daily_text(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     # build HTML like in receive_reminder_text
     msg = update.message
@@ -244,7 +249,7 @@ def receive_daily_text(update: Update, context: CallbackContext):
                                 time=datetime.time(hh, mm),
                                 context=rem,
                                 timezone=MSK)
-    context.bot.send_message(chat_id=user_id,
+    context.bot.send_message(chat_id=chat_id,
                              text=f"✅ Ежедневное напоминание {new_id} установлено на {time_str}",
                              parse_mode=ParseMode.HTML)
     return ConversationHandler.END
@@ -276,7 +281,6 @@ def receive_weekly_time(update: Update, context: CallbackContext):
     return WEEKLY_TEXT
 
 def receive_weekly_text(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     msg = update.message
     raw = msg.text or ""
@@ -311,7 +315,9 @@ def receive_weekly_text(update: Update, context: CallbackContext):
                                 timezone=MSK)
     days_map = {'Пн':0,'Вт':1,'Ср':2,'Чт':3,'Пт':4,'Сб':5,'Вс':6}
     ru_days = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс']
-    update.message.reply_text(f"✅ Еженедельное напоминание {new_id} установлено каждый {ru_days[day_num]} в {time_str}")
+    context.bot.send_message(chat_id=chat_id,
+        text=f"✅ Еженедельное напоминание {new_id} установлено каждый {ru_days[day_num]} в {time_str}",
+        parse_mode=ParseMode.HTML)
     return ConversationHandler.END
 
 def cancel_reminder(update: Update, context: CallbackContext):
@@ -362,9 +368,8 @@ def test(update: Update, context: CallbackContext):
 def list_reminders(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     reminders = load_reminders()
-    user_id = update.effective_user.id
     if not reminders:
-        context.bot.send_message(chat_id=user_id, text="У вас нет активных напоминаний.")
+        context.bot.send_message(chat_id=chat_id, text="У вас нет активных напоминаний.")
         return
     lines = ["📋 <b>Все активные напоминания:</b>"]
     ru_types = {'once': 'одноразовое', 'daily': 'ежедневное', 'weekly': 'еженедельное'}
@@ -385,11 +390,11 @@ def list_reminders(update: Update, context: CallbackContext):
         else:
             line = f"ID: {r['id']} | {typ_ru} → {r['text']}"
         lines.append(line)
-    context.bot.send_message(chat_id=user_id, text="\n".join(lines), parse_mode=ParseMode.HTML)
+    context.bot.send_message(chat_id=chat_id, text="\n".join(lines), parse_mode=ParseMode.HTML)
 
 # — Ближайшее уведомление из SCHEDULE —
 def next_notification(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
     now = datetime.datetime.now(MSK)
     best, best_dt = None, None
     for r in load_reminders():
@@ -414,40 +419,40 @@ def next_notification(update: Update, context: CallbackContext):
         if best_dt is None or next_dt < best_dt:
             best, best_dt = r, next_dt
     if not best:
-        context.bot.send_message(chat_id=user_id, text="Нет активных напоминаний.", parse_mode=ParseMode.HTML)
+        context.bot.send_message(chat_id=chat_id, text="Нет активных напоминаний.", parse_mode=ParseMode.HTML)
         return
     send_str = best_dt.strftime("%d.%m.%Y %H:%M")
     context.bot.send_message(
-        chat_id=user_id,
+        chat_id=chat_id,
         text=f"📅 Ближайшее уведомление в {send_str}:\n{best['text']}",
         parse_mode=ParseMode.HTML
     )
 
 # — Удаление напоминания по ID —
 def del_reminder(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
     args = context.args
     if not args:
-        context.bot.send_message(chat_id=user_id, text="Использование: /del_reminder ID")
+        context.bot.send_message(chat_id=chat_id, text="Использование: /del_reminder ID")
         return
     rem_id = args[0]
     reminders = load_reminders()
     new = [r for r in reminders if r['id'] != rem_id]
     if len(new) == len(reminders):
-        context.bot.send_message(chat_id=user_id, text="Напоминание не найдено.")
+        context.bot.send_message(chat_id=chat_id, text="Напоминание не найдено.")
         return
     save_reminders(new)
     # отменяем задачи
     for job in context.job_queue.get_jobs():
         if hasattr(job, 'context') and job.context.get('id') == rem_id:
             job.schedule_removal()
-    context.bot.send_message(chat_id=user_id, text=f"✅ Напоминание {rem_id} удалено.")
+    context.bot.send_message(chat_id=chat_id, text=f"✅ Напоминание {rem_id} удалено.")
 
 
 
 # — Команды для управления напоминаниями и статичными уведомлениями —
 def clear_reminders(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
     reminders = load_reminders()
     # Remove all reminders (since only dynamic now)
     new = []
@@ -456,7 +461,7 @@ def clear_reminders(update: Update, context: CallbackContext):
     for job in context.job_queue.get_jobs():
         if getattr(job.context, 'get', lambda k: None)('source') == 'user':
             job.schedule_removal()
-    context.bot.send_message(chat_id=user_id, text="✅ Все напоминания пользователя удалены.")
+    context.bot.send_message(chat_id=chat_id, text="✅ Все напоминания пользователя удалены.")
 
 
 # — Точка входа —
