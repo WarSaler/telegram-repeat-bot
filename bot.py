@@ -72,6 +72,14 @@ def save_chats(chats):
         json.dump(chats, f)
 
 
+# --- Подписка чата на рассылку ---
+def subscribe_chat(chat_id):
+    chats = load_chats()
+    if chat_id not in chats:
+        chats.append(chat_id)
+        save_chats(chats)
+
+
 def load_reminders():
     try:
         with open(REMINDERS_FILE, 'r') as f:
@@ -367,6 +375,7 @@ def test(update: Update, context: CallbackContext):
 # — Список активных напоминаний —
 def list_reminders(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
+    subscribe_chat(chat_id)
     reminders = load_reminders()
     if not reminders:
         context.bot.send_message(chat_id=chat_id, text="У вас нет активных напоминаний.")
@@ -395,6 +404,7 @@ def list_reminders(update: Update, context: CallbackContext):
 # — Ближайшее уведомление из SCHEDULE —
 def next_notification(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
+    subscribe_chat(chat_id)
     now = datetime.datetime.now(MSK)
     best, best_dt = None, None
     for r in load_reminders():
@@ -431,20 +441,21 @@ def next_notification(update: Update, context: CallbackContext):
 # — Удаление напоминания по ID —
 def del_reminder(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
+    subscribe_chat(chat_id)
     args = context.args
     if not args:
         context.bot.send_message(chat_id=chat_id, text="Использование: /del_reminder ID")
         return
     rem_id = args[0]
     reminders = load_reminders()
-    new = [r for r in reminders if r['id'] != rem_id]
-    if len(new) == len(reminders):
-        context.bot.send_message(chat_id=chat_id, text="Напоминание не найдено.")
+    matches = [r for r in reminders if r['id'] == rem_id]
+    if not matches:
+        context.bot.send_message(chat_id=chat_id, text=f"Напоминание с ID {rem_id} не найдено.")
         return
-    save_reminders(new)
-    # отменяем задачи
+    remaining = [r for r in reminders if r['id'] != rem_id]
+    save_reminders(remaining)
     for job in context.job_queue.get_jobs():
-        if hasattr(job, 'context') and job.context.get('id') == rem_id:
+        if (hasattr(job, 'context') and job.context and job.context.get('id') == rem_id) or job.name == rem_id:
             job.schedule_removal()
     context.bot.send_message(chat_id=chat_id, text=f"✅ Напоминание {rem_id} удалено.")
 
@@ -453,15 +464,11 @@ def del_reminder(update: Update, context: CallbackContext):
 # — Команды для управления напоминаниями и статичными уведомлениями —
 def clear_reminders(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    reminders = load_reminders()
-    # Remove all reminders (since only dynamic now)
-    new = []
-    save_reminders(new)
-    # cancel all user jobs
+    subscribe_chat(chat_id)
+    save_reminders([])
     for job in context.job_queue.get_jobs():
-        if getattr(job.context, 'get', lambda k: None)('source') == 'user':
-            job.schedule_removal()
-    context.bot.send_message(chat_id=chat_id, text="✅ Все напоминания пользователя удалены.")
+        job.schedule_removal()
+    context.bot.send_message(chat_id=chat_id, text="✅ Все напоминания удалены.")
 
 
 # — Точка входа —
