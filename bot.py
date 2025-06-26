@@ -113,7 +113,8 @@ def schedule_all_reminders(job_queue):
             hh, mm = map(int, rem['time'].split(':'))
             job_queue.run_daily(reminder_callback,
                                 time=datetime.time(hh, mm),
-                                context=data)
+                                context=data,
+                                timezone=MSK)
 
         elif rem_type == 'weekly':
             hh, mm = map(int, rem['time'].split(':'))
@@ -121,34 +122,10 @@ def schedule_all_reminders(job_queue):
             job_queue.run_daily(reminder_callback,
                                 time=datetime.time(hh, mm),
                                 days=tuple(days),
-                                context=data)
+                                context=data,
+                                timezone=MSK)
 
 
-# — Статичные боевые уведомления —
-SCHEDULE = [
-    {"id": "1",  "time": "20:50", "text": '🔄 <a href="https://docs.google.com/spreadsheets/d/1LggaqDZjPwGGj7Mqher4D6mHhgmhL1Ed/edit?pli=1&gid=1095733793">Переключить депозиты из таблицы API deposits</a>'},
-    {"id": "2",  "time": "20:50", "text": '📢  <a href="https://mostbet2.com/admin/app/paymentroute/list?filter%5BpaymentMethod%5D%5Bvalue%5D=rocket_gb">Выключить депозиты BDT_rocket_gb в админке</a> (либо попросить коллегу)\n✅<b>Уведомление в авто методы:</b>\n Выключили BDT_rocket_gb на сайте\n@jurxis @nii_med @gnxt_monitoring @Lika_mbt @Vikgmbt'},
-    {"id": "3",  "time": "21:55", "text": '❌ <a href="https://mostbet2.com/admin/payout-route/list?filter%5BpayoutMethod%5D%5Bvalue%5D=khalti_birpay">Выключить метод выплат Khalti_birpay в админке</a>'},
-    {"id": "4",  "time": "22:20", "text": '🔄 <a href="https://docs.google.com/spreadsheets/d/1LggaqDZjPwGGj7Mqher4D6mHhgmhL1Ed/edit?pli=1&gid=1393952854">Сделать переключение депозитов BDT</a>'},
-    {"id": "5",  "time": "02:45", "text": '🔄 <a href="https://docs.google.com/spreadsheets/d/1LggaqDZjPwGGj7Mqher4D6mHhgmhL1Ed/edit?pli=1&gid=1393952854">Сделать переключение ручных депозитов BDT</a>'},
-    {"id": "6",  "time": "02:50", "text": '⚠️ <a href="https://docs.google.com/spreadsheets/d/1bmnhijfGGcA9Vp1Zkw07JoOFCE6IJk0U/edit?pli=1&gid=1749528799">Выключить депозиты и выплаты агента Naji_MAD</a>'},
-    {"id": "7",  "time": "02:55", "text": '✅ <a href="https://docs.google.com/spreadsheets/d/1LggaqDZjPwGGj7Mqher4D6mHhgmhL1Ed/edit?pli=1&gid=1095733793">Включить API депозиты по BDT</a>'},
-    {"id": "8",  "time": "02:55", "text": '🔄 <a href="https://mostbet2.com/admin/app/paymentroute/list?filter%5BpaymentMethod%5D%5Bvalue%5D=rocket_gb">Включить депозиты BDT_rocket_gb в админке</a>\n📢 Авто методы: Включили BDT_rocket_gb на сайте\n@jurxis @nii_med @gnxt_monitoring @Lika_mbt @Vikgmbt'},
-    {"id": "9",  "time": "06:20", "text": '🔒 <a href="https://docs.google.com/spreadsheets/d/1J89GcldOX_xfqxNVhzhcjIGmuQ40Y01QsoMbJWDstCU/edit?pli=1&gid=2063840569">Выключить реквизиты и выплаты шифтовых агентов Индии</a>'},
-    {"id": "10", "time": "11:20", "text": '🔄 <a href="https://docs.google.com/spreadsheets/d/1LggaqDZjPwGGj7Mqher4D6mHhgmhL1Ed/edit?pli=1&gid=1393952854">Сделать переключение депозитов BDT</a>'},
-    {"id": "11", "time": "18:20", "text": '🔄 <a href="https://docs.google.com/spreadsheets/d/1LggaqDZjPwGGj7Mqher4D6mHhgmhL1Ed/edit?pli=1&gid=1393952854">Сделать переключение депозитов BDT</a>'},
-    {"id": "12", "time": "10:00", "text": '📊 <a href="https://new.admgrnb.com/greenback/payment-orders">Регулярная выгрузка! До 12:00 МСК выгрузка аппрувнутых депозитов из Greenback</a>'},
-    {"id": "13", "time": "10:00", "text": '🗓️ <b>По понедельникам до 12:00 МСК:</b> отправляем Шамилю 3 выгрузки\n<a href="https://confluence.dats.tech/pages/viewpage.action?pageId=760321781#id-%D0%92%D1%8B%D0%B3%D1%80%D1%83%D0%B7%D0%BA%D0%B8Birpay-%D0%92%D1%8B%D0%B3%D1%80%D1%83%D0%B7%D0%BA%D0%B0%D0%B4%D0%B5%D0%BF%D0%BE%D0%B7%D0%B8%D1%82%D0%BE%D0%B2%D0%A8%D0%B0%D0%BC%D0%B8%D0%BB%D1%8E(%D1%82%D0%B8%D0%BA%D0%B5%D1%82%D1%8B%D0%B0%D0%BC%D0%B1%D0%B1%D1%81%D0%B4%D0%B5%D0%BA%D0%BB%D0%B0%D0%B9%D0%BD%D0%B0)-%D0%BE%D1%82%D0%BF%D1%80%D0%B0%D0%B2%D0%BB%D1%8F%D0%B5%D0%BC%D0%A8%D0%B0%D0%BC%D0%B8%D0%BB%D1%8E%D0%BA%D0%B0%D0%B6%D0%B4%D1%8B%D0%B9%D0%BF%D0%BE%D0%BD%D0%B5%D0%B4%D0%B5%D0%BB%D1%8C%D0%BD%D0%B8%D0%BA%D0%B4%D0%BE12:00%D0%B7%D0%B0%D0%BF%D1%80%D0%B5%D0%B4%D1%8B%D0%B4%D1%83%D1%89%D1%83%D1%8E%D0%BD%D0%B5%D0%B4%D0%B5%D0%BB%D1%8E">Ссылка на инструкцию</a>'},
-]
-
-# — Инициализация дефолтных напоминаний на основе SCHEDULE —
-def init_default_reminders():
-    reminders = load_reminders()
-    if not reminders:
-        for item in SCHEDULE:
-            rem = {'id': item['id'], 'type': 'daily', 'time': item['time'], 'text': item['text'], 'source': 'default'}
-            reminders.append(rem)
-        save_reminders(reminders)
 
 # — Уведомляем все чаты (боевые уведомления остаются прежними) —
 def broadcast(text: str, context: CallbackContext):
@@ -320,8 +297,9 @@ def add_weekly_reminder(update: Update, context: CallbackContext):
 def list_reminders(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     reminders = load_reminders()
+    user_id = update.effective_user.id
     if not reminders:
-        update.message.reply_text("У вас нет активных напоминаний.")
+        context.bot.send_message(chat_id=user_id, text="У вас нет активных напоминаний.")
         return
     lines = ["📋 <b>Все активные напоминания:</b>"]
     ru_types = {'once': 'одноразовое', 'daily': 'ежедневное', 'weekly': 'еженедельное'}
@@ -342,60 +320,48 @@ def list_reminders(update: Update, context: CallbackContext):
         else:
             line = f"ID: {r['id']} | {typ_ru} → {r['text']}"
         lines.append(line)
-    update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+    context.bot.send_message(chat_id=user_id, text="\n".join(lines), parse_mode=ParseMode.HTML)
 
 # — Ближайшее уведомление из SCHEDULE —
 def next_notification(update: Update, context: CallbackContext):
-    now = datetime.datetime.now(MSK)
-    best = None
-    best_delta = None
-    for item in SCHEDULE:
-        hh, mm = map(int, item["time"].split(":"))
-        run_dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-        if run_dt < now:
-            run_dt += datetime.timedelta(days=1)
-        delta = run_dt - now
-        if best_delta is None or delta < best_delta:
-            best, best_delta = item, delta
-    send_dt = now + best_delta
-    send_str = send_dt.strftime("%d.%m.%Y %H:%M")
-    update.message.reply_text(
-        f"📅 Ближайшее уведомление в {send_str}:\n{best['text']}",
-        parse_mode=ParseMode.HTML
-    )
+    user_id = update.effective_user.id
+    # No static SCHEDULE block, so just inform user
+    context.bot.send_message(chat_id=user_id, text="Нет ближайших статичных уведомлений.", parse_mode=ParseMode.HTML)
 
 # — Удаление напоминания по ID —
 def del_reminder(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
     args = context.args
     if not args:
-        update.message.reply_text("Использование: /del_reminder ID")
+        context.bot.send_message(chat_id=user_id, text="Использование: /del_reminder ID")
         return
     rem_id = args[0]
     reminders = load_reminders()
     new = [r for r in reminders if r['id'] != rem_id]
     if len(new) == len(reminders):
-        update.message.reply_text("Напоминание не найдено.")
+        context.bot.send_message(chat_id=user_id, text="Напоминание не найдено.")
         return
     save_reminders(new)
     # отменяем задачи
     for job in context.job_queue.get_jobs():
         if hasattr(job, 'context') and job.context.get('id') == rem_id:
             job.schedule_removal()
-    update.message.reply_text(f"✅ Напоминание {rem_id} удалено.")
+    context.bot.send_message(chat_id=user_id, text=f"✅ Напоминание {rem_id} удалено.")
 
 
 
 # — Команды для управления напоминаниями и статичными уведомлениями —
 def clear_reminders(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
     reminders = load_reminders()
-    # keep only defaults
-    new = [r for r in reminders if r.get('source') == 'default']
+    # Remove all reminders (since only dynamic now)
+    new = []
     save_reminders(new)
-    # cancel only user jobs
+    # cancel all user jobs
     for job in context.job_queue.get_jobs():
         if getattr(job.context, 'get', lambda k: None)('source') == 'user':
             job.schedule_removal()
-    update.message.reply_text("✅ Все напоминания пользователя удалены.")
+    context.bot.send_message(chat_id=user_id, text="✅ Все напоминания пользователя удалены.")
 
 
 # — Точка входа —
@@ -426,8 +392,6 @@ def main():
     dp.add_handler(CommandHandler("clear_reminders", clear_reminders))
     dp.add_handler(CommandHandler("next", next_notification))
 
-    # Инициализация дефолтных напоминаний
-    init_default_reminders()
     # Запланировать все сохранённые напоминания
     schedule_all_reminders(updater.job_queue)
     # schedule_notifications(updater.job_queue)  # Удалено
