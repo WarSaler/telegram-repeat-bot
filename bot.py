@@ -17,8 +17,6 @@ import html
 REMINDER_DATE, REMINDER_TEXT = range(2)
 DAILY_TIME, DAILY_TEXT = range(2, 4)
 WEEKLY_DAY, WEEKLY_TIME, WEEKLY_TEXT = range(4, 7)
-# Новый стейт для удаления напоминания
-REM_DEL_ID = 7
 
 # — Настройка логирования —
 logging.basicConfig(
@@ -334,28 +332,28 @@ def cancel_reminder(update: Update, context: CallbackContext):
     update.message.reply_text("Операция отменена.", parse_mode=ParseMode.HTML)
     return ConversationHandler.END
 
-# --- Двухшаговое удаление напоминания ---
-def start_delete_reminder(update: Update, context: CallbackContext):
+
+
+# --- Одношаговое удаление напоминания ---
+def del_reminder(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     subscribe_chat(chat_id)
-    update.message.reply_text("Введите ID напоминания для удаления или /cancel для отмены")
-    return REM_DEL_ID
-
-def confirm_delete_reminder(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    rem_id = update.message.text.strip()
+    args = context.args
+    if not args:
+        update.message.reply_text("Использование: /del_reminder ID")
+        return
+    rem_id = args[0]
     reminders = load_reminders()
     matches = [r for r in reminders if r['id'] == rem_id]
     if not matches:
-        context.bot.send_message(chat_id=chat_id, text=f"Напоминание с ID {rem_id} не найдено.")
-    else:
-        remaining = [r for r in reminders if r['id'] != rem_id]
-        save_reminders(remaining)
-        for job in context.job_queue.get_jobs():
-            if (hasattr(job, 'context') and job.context and job.context.get('id') == rem_id) or job.name == rem_id:
-                job.schedule_removal()
-        context.bot.send_message(chat_id=chat_id, text=f"✅ Напоминание {rem_id} удалено.")
-    return ConversationHandler.END
+        update.message.reply_text(f"Напоминание с ID {rem_id} не найдено.")
+        return
+    remaining = [r for r in reminders if r['id'] != rem_id]
+    save_reminders(remaining)
+    for job in context.job_queue.get_jobs():
+        if hasattr(job, 'context') and job.context and job.context.get('id') == rem_id:
+            job.schedule_removal()
+    update.message.reply_text(f"✅ Напоминание {rem_id} удалено.", parse_mode=ParseMode.HTML)
 
 # — Команды бота —
 def start(update: Update, context: CallbackContext):
@@ -521,16 +519,7 @@ def main():
     )
     dp.add_handler(conv_weekly)
     dp.add_handler(CommandHandler("list_reminders", list_reminders))
-    # Новый ConversationHandler для удаления напоминания
-    conv_del = ConversationHandler(
-        entry_points=[CommandHandler("del_reminder", start_delete_reminder)],
-        states={
-            REM_DEL_ID: [MessageHandler(Filters.text & ~Filters.command, confirm_delete_reminder)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel_reminder)],
-        allow_reentry=True
-    )
-    dp.add_handler(conv_del)
+    dp.add_handler(CommandHandler("del_reminder", del_reminder))
     dp.add_handler(CommandHandler("clear_reminders", clear_reminders))
     dp.add_handler(CommandHandler("next", next_notification))
 
