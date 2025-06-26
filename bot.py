@@ -15,6 +15,18 @@ import html
 from telegram.ext import MessageHandler
 from telegram.error import Conflict
 
+logging.basicConfig(
+    format="%(asctime)s — %(levelname)s — %(message)s",
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+def error_handler(update: Update, context: CallbackContext):
+    """
+    Handle errors by logging them without crashing the bot.
+    """
+    logger.error("Uncaught exception:", exc_info=context.error)
+
 # ... все ваши функции (оставьте как есть) ...
 
 def main():
