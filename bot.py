@@ -301,6 +301,13 @@ def next_notification(update: Update, context: CallbackContext):
         msg = f"[Еженедельно] {soonest['day'].title()} {soonest['time']}: {soonest['text']}"
     update.message.reply_text(f"Ближайшее напоминание:\n{msg}")
 
+def cancel_reminder(update: Update, context: CallbackContext):
+    """
+    Отмена создания напоминания.
+    """
+    update.message.reply_text("❌ Операция отменена.")
+    return ConversationHandler.END
+
 def main():
     updater = Updater(token=os.environ['BOT_TOKEN'], use_context=True)
     dp = updater.dispatcher
