@@ -17,6 +17,7 @@ import html
 REMINDER_DATE, REMINDER_TEXT = range(2)
 DAILY_TIME, DAILY_TEXT = range(2, 4)
 WEEKLY_DAY, WEEKLY_TIME, WEEKLY_TEXT = range(4, 7)
+REM_DEL_ID = 7
 
 # — Настройка логирования —
 logging.basicConfig(
@@ -205,7 +206,10 @@ def receive_reminder_text(update: Update, context: CallbackContext):
     save_reminders(reminders)
     delay = (dt - datetime.datetime.now(MSK)).total_seconds()
     context.job_queue.run_once(reminder_callback, delay, context=rem)
-    update.message.reply_text(f"✅ Напоминание {new_id} установлено на {dt.strftime('%d.%m.%Y %H:%M')}", parse_mode=ParseMode.HTML)
+    chat_id = update.effective_chat.id
+    context.bot.send_message(chat_id=chat_id,
+                             text=f"✅ Напоминание {new_id} успешно создано на {dt.strftime('%d.%m.%Y %H:%M')}",
+                             parse_mode=ParseMode.HTML)
     return ConversationHandler.END
 
 # --- DAILY REMINDER CONVERSATION ---
@@ -258,7 +262,7 @@ def receive_daily_text(update: Update, context: CallbackContext):
                                 context=rem,
                                 timezone=MSK)
     context.bot.send_message(chat_id=chat_id,
-                             text=f"✅ Ежедневное напоминание {new_id} установлено на {time_str}",
+                             text=f"✅ Ежедневное напоминание {new_id} успешно создано на {time_str}",
                              parse_mode=ParseMode.HTML)
     return ConversationHandler.END
 
@@ -324,7 +328,7 @@ def receive_weekly_text(update: Update, context: CallbackContext):
     days_map = {'Пн':0,'Вт':1,'Ср':2,'Чт':3,'Пт':4,'Сб':5,'Вс':6}
     ru_days = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс']
     context.bot.send_message(chat_id=chat_id,
-        text=f"✅ Еженедельное напоминание {new_id} установлено каждый {ru_days[day_num]} в {time_str}",
+        text=f"✅ Еженедельное напоминание {new_id} успешно создано каждый {ru_days[day_num]} в {time_str}",
         parse_mode=ParseMode.HTML)
     return ConversationHandler.END
 
@@ -335,25 +339,29 @@ def cancel_reminder(update: Update, context: CallbackContext):
 
 
 # --- Одношаговое удаление напоминания ---
-def del_reminder(update: Update, context: CallbackContext):
+
+# --- Многошаговое удаление напоминания ---
+def start_delete_reminder(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     subscribe_chat(chat_id)
-    args = context.args
-    if not args:
-        update.message.reply_text("Использование: /del_reminder ID")
-        return
-    rem_id = args[0]
+    update.message.reply_text("Введите ID напоминания для удаления или /cancel для отмены")
+    return REM_DEL_ID
+
+def confirm_delete_reminder(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    rem_id = update.message.text.strip()
     reminders = load_reminders()
     matches = [r for r in reminders if r['id'] == rem_id]
     if not matches:
-        update.message.reply_text(f"Напоминание с ID {rem_id} не найдено.")
-        return
-    remaining = [r for r in reminders if r['id'] != rem_id]
-    save_reminders(remaining)
-    for job in context.job_queue.get_jobs():
-        if hasattr(job, 'context') and job.context and job.context.get('id') == rem_id:
-            job.schedule_removal()
-    update.message.reply_text(f"✅ Напоминание {rem_id} удалено.", parse_mode=ParseMode.HTML)
+        context.bot.send_message(chat_id=chat_id, text=f"Напоминание с ID {rem_id} не найдено.")
+    else:
+        remaining = [r for r in reminders if r['id'] != rem_id]
+        save_reminders(remaining)
+        for job in context.job_queue.get_jobs():
+            if isinstance(job.context, dict) and job.context.get('id') == rem_id:
+                job.schedule_removal()
+        context.bot.send_message(chat_id=chat_id, text=f"✅ Напоминание {rem_id} удалено.")
+    return ConversationHandler.END
 
 # — Команды бота —
 def start(update: Update, context: CallbackContext):
@@ -519,7 +527,13 @@ def main():
     )
     dp.add_handler(conv_weekly)
     dp.add_handler(CommandHandler("list_reminders", list_reminders))
-    dp.add_handler(CommandHandler("del_reminder", del_reminder))
+    conv_del = ConversationHandler(
+        entry_points=[CommandHandler("del_reminder", start_delete_reminder)],
+        states={REM_DEL_ID: [MessageHandler(Filters.text & ~Filters.command, confirm_delete_reminder)]},
+        fallbacks=[CommandHandler("cancel", cancel_reminder)],
+        allow_reentry=True,
+    )
+    dp.add_handler(conv_del)
     dp.add_handler(CommandHandler("clear_reminders", clear_reminders))
     dp.add_handler(CommandHandler("next", next_notification))
 
