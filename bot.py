@@ -15,6 +15,8 @@ from telegram import Update, ParseMode
 from telegram.ext import Updater, CommandHandler, CallbackContext, Job, ConversationHandler, MessageHandler, Filters
 import html
 REMINDER_DATE, REMINDER_TEXT = range(2)
+DAILY_TIME, DAILY_TEXT = range(2, 4)
+WEEKLY_DAY, WEEKLY_TIME, WEEKLY_TEXT = range(4, 7)
 
 # — Настройка логирования —
 logging.basicConfig(
@@ -192,6 +194,126 @@ def receive_reminder_text(update: Update, context: CallbackContext):
     update.message.reply_text(f"✅ Напоминание {new_id} установлено на {dt.strftime('%d.%m.%Y %H:%M')}", parse_mode=ParseMode.HTML)
     return ConversationHandler.END
 
+# --- DAILY REMINDER CONVERSATION ---
+def start_add_daily_reminder(update: Update, context: CallbackContext):
+    update.message.reply_text("Введите время ежедневного напоминания (ЧЧ:ММ) или /cancel для отмены")
+    return DAILY_TIME
+
+def receive_daily_time(update: Update, context: CallbackContext):
+    text = update.message.text.strip()
+    try:
+        hh, mm = map(int, text.split(':'))
+    except Exception:
+        update.message.reply_text("Неверный формат. Используйте ЧЧ:ММ или /cancel")
+        return DAILY_TIME
+    context.user_data['daily_time'] = text
+    update.message.reply_text("Введите текст ежедневного напоминания или /cancel для отмены")
+    return DAILY_TEXT
+
+def receive_daily_text(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    # build HTML like in receive_reminder_text
+    msg = update.message
+    raw = msg.text or ""
+    entities = msg.entities or []
+    html_text = ""
+    last = 0
+    for ent in entities:
+        if ent.type in ("text_link", "url"):
+            html_text += html.escape(raw[last:ent.offset])
+            label = raw[ent.offset:ent.offset + ent.length]
+            url = ent.url if ent.type == "text_link" else label
+            html_text += f'<a href="{html.escape(url)}">{html.escape(label)}</a>'
+            last = ent.offset + ent.length
+    html_text += html.escape(raw[last:])
+    time_str = context.user_data.pop('daily_time')
+    reminders = load_reminders()
+    max_id = max((int(r['id']) for r in reminders), default=0)
+    new_id = str(max_id + 1)
+    rem = {'id': new_id, 'type': 'daily', 'time': time_str, 'text': html_text, 'source': 'user'}
+    reminders.append(rem)
+    save_reminders(reminders)
+    # subscribe chat if needed
+    chats = load_chats()
+    if chat_id not in chats:
+        chats.append(chat_id)
+        save_chats(chats)
+    hh, mm = map(int, time_str.split(':'))
+    context.job_queue.run_daily(reminder_callback,
+                                time=datetime.time(hh, mm),
+                                context=rem,
+                                timezone=MSK)
+    context.bot.send_message(chat_id=user_id,
+                             text=f"✅ Ежедневное напоминание {new_id} установлено на {time_str}",
+                             parse_mode=ParseMode.HTML)
+    return ConversationHandler.END
+
+# --- WEEKLY REMINDER CONVERSATION ---
+def start_add_weekly_reminder(update: Update, context: CallbackContext):
+    update.message.reply_text("Введите день недели для напоминания (Пн,Вт,Ср,Чт,Пт,Сб,Вс) или /cancel")
+    return WEEKLY_DAY
+
+def receive_weekly_day(update: Update, context: CallbackContext):
+    day_str = update.message.text.strip()
+    days_map = {'Пн':0,'Вт':1,'Ср':2,'Чт':3,'Пт':4,'Сб':5,'Вс':6}
+    if day_str not in days_map:
+        update.message.reply_text("День указать как Пн, Вт, Ср, Чт, Пт, Сб или Вс")
+        return WEEKLY_DAY
+    context.user_data['weekly_day'] = days_map[day_str]
+    update.message.reply_text("Введите время еженедельного напоминания (ЧЧ:ММ) или /cancel для отмены")
+    return WEEKLY_TIME
+
+def receive_weekly_time(update: Update, context: CallbackContext):
+    text = update.message.text.strip()
+    try:
+        hh, mm = map(int, text.split(':'))
+    except Exception:
+        update.message.reply_text("Неверный формат. Используйте ЧЧ:ММ или /cancel")
+        return WEEKLY_TIME
+    context.user_data['weekly_time'] = text
+    update.message.reply_text("Введите текст еженедельного напоминания или /cancel для отмены")
+    return WEEKLY_TEXT
+
+def receive_weekly_text(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    msg = update.message
+    raw = msg.text or ""
+    entities = msg.entities or []
+    html_text = ""
+    last = 0
+    for ent in entities:
+        if ent.type in ("text_link", "url"):
+            html_text += html.escape(raw[last:ent.offset])
+            label = raw[ent.offset:ent.offset + ent.length]
+            url = ent.url if ent.type == "text_link" else label
+            html_text += f'<a href="{html.escape(url)}">{html.escape(label)}</a>'
+            last = ent.offset + ent.length
+    html_text += html.escape(raw[last:])
+    day_num = context.user_data.pop('weekly_day')
+    time_str = context.user_data.pop('weekly_time')
+    reminders = load_reminders()
+    max_id = max((int(r['id']) for r in reminders), default=0)
+    new_id = str(max_id + 1)
+    rem = {'id': new_id, 'type': 'weekly', 'days':[day_num], 'time': time_str, 'text': html_text, 'source': 'user'}
+    reminders.append(rem)
+    save_reminders(reminders)
+    chats = load_chats()
+    if chat_id not in chats:
+        chats.append(chat_id)
+        save_chats(chats)
+    hh, mm = map(int, time_str.split(':'))
+    context.job_queue.run_daily(reminder_callback,
+                                time=datetime.time(hh, mm),
+                                days=(day_num,),
+                                context=rem,
+                                timezone=MSK)
+    days_map = {'Пн':0,'Вт':1,'Ср':2,'Чт':3,'Пт':4,'Сб':5,'Вс':6}
+    ru_days = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс']
+    update.message.reply_text(f"✅ Еженедельное напоминание {new_id} установлено каждый {ru_days[day_num]} в {time_str}")
+    return ConversationHandler.END
+
 def cancel_reminder(update: Update, context: CallbackContext):
     update.message.reply_text("Операция отменена.", parse_mode=ParseMode.HTML)
     return ConversationHandler.END
@@ -235,63 +357,6 @@ def test(update: Update, context: CallbackContext):
 #     update.message.reply_text(f"✅ Одноразовое напоминание {rem_id} установлено на {dt.strftime('%Y-%m-%d %H:%M')}")
 
 # — Ежедневное напоминание —
-def add_daily_reminder(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    args = context.args
-    if len(args) < 2:
-        update.message.reply_text("Использование: /remind_daily ЧЧ:ММ текст")
-        return
-    time_str = args[0]
-    text = ' '.join(args[1:])
-    try:
-        hh, mm = map(int, time_str.split(':'))
-    except Exception:
-        update.message.reply_text("Неверный формат времени")
-        return
-    rem_id = str(uuid4())
-    rem = {'id': rem_id, 'type': 'daily', 'chat_id': chat_id, 'text': text, 'time': time_str, 'source': 'user'}
-    reminders = load_reminders() + [rem]
-    save_reminders(reminders)
-    context.job_queue.run_daily(reminder_callback,
-                                time=datetime.time(hh, mm),
-                                context=rem)
-    update.message.reply_text(f"✅ Ежедневное напоминание {rem_id} на {time_str}")
-
-# — Еженедельное напоминание —
-def add_weekly_reminder(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    args = context.args
-    if len(args) < 3:
-        update.message.reply_text("Использование: /remind_weekly <День> ЧЧ:ММ текст (День = Пн,Вт,Ср,Чт,Пт,Сб,Вс)")
-        return
-    day_str, time_str = args[0], args[1]
-    text = ' '.join(args[2:])
-    days_map = {'Mon':0,'Tue':1,'Wed':2,'Thu':3,'Fri':4,'Sat':5,'Sun':6}
-    if day_str not in days_map:
-        update.message.reply_text("День указать как Пн, Вт, Ср, Чт, Пт, Сб или Вс")
-        return
-    try:
-        hh, mm = map(int, time_str.split(':'))
-    except Exception:
-        update.message.reply_text("Неверный формат времени")
-        return
-    rem_id = str(uuid4())
-    rem = {
-        'id': rem_id,
-        'type': 'weekly',
-        'chat_id': chat_id,
-        'text': text,
-        'time': time_str,
-        'days': [days_map[day_str]],
-        'source': 'user'
-    }
-    reminders = load_reminders() + [rem]
-    save_reminders(reminders)
-    context.job_queue.run_daily(reminder_callback,
-                                time=datetime.time(hh, mm),
-                                days=(days_map[day_str],),
-                                context=rem)
-    update.message.reply_text(f"✅ Еженедельное напоминание {rem_id} каждый {day_str} в {time_str}")
 
 # — Список активных напоминаний —
 def list_reminders(update: Update, context: CallbackContext):
@@ -325,8 +390,38 @@ def list_reminders(update: Update, context: CallbackContext):
 # — Ближайшее уведомление из SCHEDULE —
 def next_notification(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
-    # No static SCHEDULE block, so just inform user
-    context.bot.send_message(chat_id=user_id, text="Нет ближайших статичных уведомлений.", parse_mode=ParseMode.HTML)
+    now = datetime.datetime.now(MSK)
+    best, best_dt = None, None
+    for r in load_reminders():
+        typ = r['type']
+        if typ == 'once':
+            dt = datetime.datetime.fromisoformat(r['send_time']).astimezone(MSK)
+            next_dt = dt
+        elif typ == 'daily':
+            hh, mm = map(int, r['time'].split(':'))
+            dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            next_dt = dt if dt > now else dt + datetime.timedelta(days=1)
+        elif typ == 'weekly':
+            hh, mm = map(int, r['time'].split(':'))
+            day = r['days'][0]
+            dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            days_ahead = (day - dt.weekday() + 7) % 7
+            if days_ahead == 0 and dt <= now:
+                days_ahead = 7
+            next_dt = dt + datetime.timedelta(days=days_ahead)
+        else:
+            continue
+        if best_dt is None or next_dt < best_dt:
+            best, best_dt = r, next_dt
+    if not best:
+        context.bot.send_message(chat_id=user_id, text="Нет активных напоминаний.", parse_mode=ParseMode.HTML)
+        return
+    send_str = best_dt.strftime("%d.%m.%Y %H:%M")
+    context.bot.send_message(
+        chat_id=user_id,
+        text=f"📅 Ближайшее уведомление в {send_str}:\n{best['text']}",
+        parse_mode=ParseMode.HTML
+    )
 
 # — Удаление напоминания по ID —
 def del_reminder(update: Update, context: CallbackContext):
@@ -385,8 +480,28 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel_reminder)],
     )
     dp.add_handler(conv)
-    dp.add_handler(CommandHandler("remind_daily", add_daily_reminder))
-    dp.add_handler(CommandHandler("remind_weekly", add_weekly_reminder))
+    # dp.add_handler(CommandHandler("remind_daily", add_daily_reminder))
+    # dp.add_handler(CommandHandler("remind_weekly", add_weekly_reminder))
+    conv_daily = ConversationHandler(
+        entry_points=[CommandHandler("remind_daily", start_add_daily_reminder)],
+        states={
+            DAILY_TIME: [MessageHandler(Filters.text & ~Filters.command, receive_daily_time)],
+            DAILY_TEXT: [MessageHandler(Filters.text & ~Filters.command, receive_daily_text)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_reminder)],
+    )
+    dp.add_handler(conv_daily)
+
+    conv_weekly = ConversationHandler(
+        entry_points=[CommandHandler("remind_weekly", start_add_weekly_reminder)],
+        states={
+            WEEKLY_DAY: [MessageHandler(Filters.text & ~Filters.command, receive_weekly_day)],
+            WEEKLY_TIME: [MessageHandler(Filters.text & ~Filters.command, receive_weekly_time)],
+            WEEKLY_TEXT: [MessageHandler(Filters.text & ~Filters.command, receive_weekly_text)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_reminder)],
+    )
+    dp.add_handler(conv_weekly)
     dp.add_handler(CommandHandler("list_reminders", list_reminders))
     dp.add_handler(CommandHandler("del_reminder", del_reminder))
     dp.add_handler(CommandHandler("clear_reminders", clear_reminders))
