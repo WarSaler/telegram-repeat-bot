@@ -11,6 +11,19 @@ import requests
 from telegram import Update, ParseMode
 from telegram.ext import Updater, CommandHandler, CallbackContext, Job, ConversationHandler, MessageHandler, Filters
 import html
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'OK')
+
+def start_health_server():
+    port = int(os.environ.get('PORT', 5000))
+    server = HTTPServer(('0.0.0.0', port), HealthHandler)
+    server.serve_forever()
 from telegram.ext import MessageHandler
 from telegram.error import Conflict
 
@@ -395,6 +408,9 @@ def main():
 
     # Запланировать все сохранённые напоминания
     schedule_all_reminders(updater.job_queue)
+
+    # Start health HTTP server for Render port binding
+    threading.Thread(target=start_health_server, daemon=True).start()
 
     logger.info("Polling начат, бот готов к работе")
     updater.start_polling()
