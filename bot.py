@@ -15,6 +15,7 @@ from telegram import Update, ParseMode
 from telegram.ext import Updater, CommandHandler, CallbackContext, Job, ConversationHandler, MessageHandler, Filters
 import html
 from telegram.ext import MessageHandler
+from telegram.error import Conflict
 def subscribe_and_pass(update: Update, context: CallbackContext):
     # ensure this chat is subscribed for broadcasts
     subscribe_chat(update.effective_chat.id)
@@ -153,9 +154,11 @@ def broadcast(text: str, context: CallbackContext):
 
 # — Обработчик ошибок —
 def error_handler(update: Update, context: CallbackContext):
-    if isinstance(context.error, Conflict):
+    err = context.error
+    # ignore Conflict errors when polling
+    if isinstance(err, Conflict):
         return
-    logger.error("Необработанная ошибка", exc_info=context.error)
+    logger.error("Uncaught exception:", exc_info=err)
 
 def start_add_one_reminder(update: Update, context: CallbackContext):
     update.message.reply_text("Введите дату и время напоминания (ДД.MM.ГГГГ ЧЧ:ММ) или /cancel для отмены")
