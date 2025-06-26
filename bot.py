@@ -40,6 +40,9 @@ def error_handler(update: Update, context: CallbackContext):
     """
     Handle errors by logging them without crashing the bot.
     """
+    from telegram.error import Conflict
+    if isinstance(context.error, Conflict):
+        return
     logger.error("Uncaught exception:", exc_info=context.error)
 
 def subscribe_chat(chat_id):
@@ -355,6 +358,8 @@ def schedule_all_reminders(job_queue):
 
 def main():
     updater = Updater(token=os.environ['BOT_TOKEN'], use_context=True)
+    # Remove any existing webhook so polling won't conflict
+    updater.bot.delete_webhook()
     dp = updater.dispatcher
     dp.add_error_handler(error_handler)
 
