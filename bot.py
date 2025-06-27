@@ -374,7 +374,6 @@ def schedule_all_reminders(job_queue):
 def main():
     token = os.environ['BOT_TOKEN']
     port = int(os.environ.get('PORT', 8000))
-    external_url = os.environ['RENDER_EXTERNAL_URL']
     updater = Updater(token=token, use_context=True)
     # Reset any existing webhook so polling can start cleanly
     try:
