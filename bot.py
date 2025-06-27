@@ -78,6 +78,7 @@ def start(update: Update, context: CallbackContext):
     Обработчик команды /start.
     """
     chat_id = update.effective_chat.id
+    logger.info("Received /start from chat %s", chat_id)
     subscribe_chat(chat_id)
     context.bot.send_message(chat_id=chat_id,
                              text="Привет! Я бот-напоминатель, используй /remind для создания напоминаний.",
@@ -88,6 +89,7 @@ def test(update: Update, context: CallbackContext):
     Обработчик команды /test для проверки работы бота.
     """
     chat_id = update.effective_chat.id
+    logger.info("Received /test from chat %s", chat_id)
     subscribe_chat(chat_id)
     context.bot.send_message(chat_id=chat_id,
                              text="✅ Бот работает корректно!",
@@ -383,8 +385,15 @@ def main():
     dp = updater.dispatcher
     # Echo handler for debugging responsiveness
     def echo(update: Update, context: CallbackContext):
+        logger.info("Echo handler received message from %s: %s", update.effective_chat.id, update.message.text)
         context.bot.send_message(chat_id=update.effective_chat.id, text="Echo: " + update.message.text)
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))
+
+    def unknown_command(update: Update, context: CallbackContext):
+        logger.info("Unknown command received from %s: %s", update.effective_chat.id, update.message.text)
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                 text="Извините, я не знаю эту команду. Используйте /start или /test.")
+    dp.add_handler(MessageHandler(Filters.command, unknown_command), group=1)
     dp.add_error_handler(error_handler)
 
     # auto-subscribe any chat when a command is used
