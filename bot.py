@@ -358,6 +358,8 @@ def schedule_all_reminders(job_queue):
 
 def main():
     updater = Updater(token=os.environ['BOT_TOKEN'], use_context=True)
+    # remove any existing webhook so polling will fetch updates
+    updater.bot.delete_webhook(drop_pending_updates=True)
     dp = updater.dispatcher
     dp.add_error_handler(error_handler)
 
@@ -414,8 +416,8 @@ def main():
 
     # Health check server for Render free tier
     threading.Thread(target=start_health_server, daemon=True).start()
-    # Start polling for updates
-    updater.start_polling()
+    # start polling for updates, clearing any pending updates
+    updater.start_polling(clean=True)
     logger.info("Polling started, bot is ready")
     updater.idle()
 
