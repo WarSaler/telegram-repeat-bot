@@ -20,6 +20,11 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b'OK')
 
+    def do_HEAD(self):
+        # Respond to health check HEAD requests
+        self.send_response(200)
+        self.end_headers()
+
 def start_health_server():
     port = int(os.environ.get('PORT', 5000))
     server = HTTPServer(('0.0.0.0', port), HealthHandler)
@@ -431,15 +436,14 @@ def main():
 
     # Health check server for Render free tier
     threading.Thread(target=start_health_server, daemon=True).start()
-    # start webhook for updates, clearing any pending updates
-    updater.start_webhook(
-        listen="0.0.0.0",
-        port=port,
-        url_path=token,
-        drop_pending_updates=True,
-        webhook_url=f"{external_url}/{token}"
-    )
-    logger.info("Webhook started at %s:%d with URL %s/%s, bot is ready", "0.0.0.0", port, external_url, token)
+    # Reset any existing webhook and start polling
+    try:
+        result = updater.bot.delete_webhook(drop_pending_updates=True)
+        logger.info("Webhook reset: %s", result)
+    except Exception as e:
+        logger.error("Failed to delete webhook: %s", e)
+    updater.start_polling(drop_pending_updates=True)
+    logger.info("Polling started, bot is ready")
     updater.idle()
 
 if __name__ == "__main__":
