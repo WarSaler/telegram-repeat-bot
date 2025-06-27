@@ -365,7 +365,10 @@ def schedule_all_reminders(job_queue):
         schedule_reminder(job_queue, reminder)
 
 def main():
-    updater = Updater(token=os.environ['BOT_TOKEN'], use_context=True)
+    token = os.environ['BOT_TOKEN']
+    port = int(os.environ.get('PORT', 8000))
+    external_url = os.environ['RENDER_EXTERNAL_URL']
+    updater = Updater(token=token, use_context=True)
     # Reset any existing webhook so polling can start cleanly
     try:
         res = updater.bot.delete_webhook(drop_pending_updates=True)
@@ -428,9 +431,15 @@ def main():
 
     # Health check server for Render free tier
     threading.Thread(target=start_health_server, daemon=True).start()
-    # start polling for updates, clearing any pending updates
-    updater.start_polling(drop_pending_updates=True)
-    logger.info("Polling started, bot is ready")
+    # start webhook for updates, clearing any pending updates
+    updater.start_webhook(
+        listen="0.0.0.0",
+        port=port,
+        url_path=token,
+        drop_pending_updates=True,
+        webhook_url=f"{external_url}/{token}"
+    )
+    logger.info("Webhook started at %s:%d with URL %s/%s, bot is ready", "0.0.0.0", port, external_url, token)
     updater.idle()
 
 if __name__ == "__main__":
