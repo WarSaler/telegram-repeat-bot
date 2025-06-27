@@ -381,6 +381,10 @@ def main():
     except Exception as e:
         logger.error("Error deleting webhook: %s", e)
     dp = updater.dispatcher
+    # Echo handler for debugging responsiveness
+    def echo(update: Update, context: CallbackContext):
+        context.bot.send_message(chat_id=update.effective_chat.id, text="Echo: " + update.message.text)
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))
     dp.add_error_handler(error_handler)
 
     # auto-subscribe any chat when a command is used
