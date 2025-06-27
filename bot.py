@@ -416,12 +416,14 @@ def main():
     port = int(os.environ.get('PORT', 5000))
     token = os.environ['BOT_TOKEN']
     base_url = os.environ.get('BASE_URL').rstrip('/')
+    webhook_url = f"{base_url}/{token}"
     updater.start_webhook(
         listen='0.0.0.0',
         port=port,
-        url_path=token
+        url_path=token,
+        webhook_url=webhook_url
     )
-    updater.bot.set_webhook(f"{base_url}/{token}")
+    # webhook is set via start_webhook()
 
     logger.info(f"Webhook запущен на порту {port}, бот готов к работе")
     updater.idle()
