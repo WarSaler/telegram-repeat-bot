@@ -412,20 +412,11 @@ def main():
     # Запланировать все сохранённые напоминания
     schedule_all_reminders(updater.job_queue)
 
-    # Webhook setup for Render free tier
-    port = int(os.environ.get('PORT', 5000))
-    token = os.environ['BOT_TOKEN']
-    base_url = os.environ.get('BASE_URL').rstrip('/')
-    webhook_url = f"{base_url}/{token}"
-    updater.start_webhook(
-        listen='0.0.0.0',
-        port=port,
-        url_path=token,
-        webhook_url=webhook_url
-    )
-    # webhook is set via start_webhook()
-
-    logger.info(f"Webhook запущен на порту {port}, бот готов к работе")
+    # Health check server for Render free tier
+    threading.Thread(target=start_health_server, daemon=True).start()
+    # Start polling for updates
+    updater.start_polling()
+    logger.info("Polling started, bot is ready")
     updater.idle()
 
 if __name__ == "__main__":
