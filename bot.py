@@ -444,15 +444,23 @@ def main():
 
     # Health check server for Render free tier
     threading.Thread(target=start_health_server, daemon=True).start()
-    # Reset any existing webhook and start polling
-    try:
-        result = updater.bot.delete_webhook(drop_pending_updates=True)
-        logger.info("Webhook reset: %s", result)
-    except Exception as e:
-        logger.error("Failed to delete webhook: %s", e)
-    updater.start_polling(drop_pending_updates=True)
-    logger.info("Polling started, bot is ready")
-    updater.idle()
+    # Determine whether to use webhook or polling
+    WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+    if WEBHOOK_URL:
+        # Delete any existing webhook
+        updater.bot.delete_webhook(drop_pending_updates=True)
+        # Start webhook server
+        updater.start_webhook(listen='0.0.0.0', port=port, url_path=token)
+        # Register webhook URL with Telegram
+        updater.bot.set_webhook(f"{WEBHOOK_URL}/{token}")
+        logger.info("Webhook mode started, bot is ready")
+        updater.idle()
+    else:
+        # Polling mode
+        updater.bot.delete_webhook(drop_pending_updates=True)
+        updater.start_polling(drop_pending_updates=True)
+        logger.info("Polling mode started, bot is ready")
+        updater.idle()
 
 if __name__ == "__main__":
     main()
