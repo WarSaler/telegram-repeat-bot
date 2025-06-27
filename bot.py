@@ -358,8 +358,6 @@ def schedule_all_reminders(job_queue):
 
 def main():
     updater = Updater(token=os.environ['BOT_TOKEN'], use_context=True)
-    # Remove any existing webhook so polling won't conflict
-    updater.bot.delete_webhook()
     dp = updater.dispatcher
     dp.add_error_handler(error_handler)
 
@@ -414,11 +412,18 @@ def main():
     # Запланировать все сохранённые напоминания
     schedule_all_reminders(updater.job_queue)
 
-    # Start health HTTP server for Render port binding
-    threading.Thread(target=start_health_server, daemon=True).start()
+    # Webhook setup for Render free tier
+    port = int(os.environ.get('PORT', 5000))
+    token = os.environ['BOT_TOKEN']
+    base_url = os.environ.get('BASE_URL').rstrip('/')
+    updater.start_webhook(
+        listen='0.0.0.0',
+        port=port,
+        url_path=token
+    )
+    updater.bot.set_webhook(f"{base_url}/{token}")
 
-    logger.info("Polling начат, бот готов к работе")
-    updater.start_polling()
+    logger.info(f"Webhook запущен на порту {port}, бот готов к работе")
     updater.idle()
 
 if __name__ == "__main__":
