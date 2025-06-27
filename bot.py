@@ -391,8 +391,6 @@ def main():
     # Removed unknown_command handler and its registration
     dp.add_error_handler(error_handler)
 
-    # auto-subscribe any chat when a command is used
-    dp.add_handler(MessageHandler(Filters.command, subscribe_and_pass), group=0)
 
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("test", test))
