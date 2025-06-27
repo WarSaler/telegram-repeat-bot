@@ -389,11 +389,7 @@ def main():
         context.bot.send_message(chat_id=update.effective_chat.id, text="Echo: " + update.message.text)
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))
 
-    def unknown_command(update: Update, context: CallbackContext):
-        logger.info("Unknown command received from %s: %s", update.effective_chat.id, update.message.text)
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text="Извините, я не знаю эту команду. Используйте /start или /test.")
-    dp.add_handler(MessageHandler(Filters.command, unknown_command), group=1)
+    # Removed unknown_command handler and its registration
     dp.add_error_handler(error_handler)
 
     # auto-subscribe any chat when a command is used
