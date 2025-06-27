@@ -48,8 +48,9 @@ def error_handler(update: Update, context: CallbackContext):
 def subscribe_chat(chat_id):
     try:
         with open("subscribed_chats.json", "r") as f:
-            chats = json.load(f)
-    except FileNotFoundError:
+            data = f.read().strip()
+            chats = json.loads(data) if data else []
+    except (FileNotFoundError, json.JSONDecodeError):
         chats = []
 
     if chat_id not in chats:
@@ -96,10 +97,17 @@ REM_DEL_ID = 0
 
 # --- Вспомогательные функции для хранения напоминаний (глобальный список) ---
 def load_reminders():
+    """
+    Load reminders from the JSON file, returning an empty list if the file is missing,
+    empty, or contains invalid JSON.
+    """
     try:
         with open(REMINDERS_FILE, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
+            data = f.read().strip()
+            if not data:
+                return []
+            return json.loads(data)
+    except (FileNotFoundError, json.JSONDecodeError):
         return []
 
 def save_reminders(reminders):
