@@ -14,6 +14,9 @@ from telegram.error import Conflict, BadRequest
 import html
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+# Константа для московского времени
+MOSCOW_TZ = pytz.timezone('Europe/Moscow')
+
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -40,11 +43,41 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def get_moscow_time():
+    """Получить текущее московское время"""
+    return datetime.now(MOSCOW_TZ)
+
+def moscow_time_to_utc(moscow_dt):
+    """Конвертировать московское время в UTC"""
+    if isinstance(moscow_dt, str):
+        # Если строка, парсим ее как московское время
+        naive_dt = datetime.strptime(moscow_dt, "%Y-%m-%d %H:%M")
+        moscow_dt = MOSCOW_TZ.localize(naive_dt)
+    elif moscow_dt.tzinfo is None:
+        # Если naive datetime, считаем его московским
+        moscow_dt = MOSCOW_TZ.localize(moscow_dt)
+    
+    return moscow_dt.astimezone(pytz.UTC)
+
+def utc_to_moscow_time(utc_dt):
+    """Конвертировать UTC время в московское"""
+    if utc_dt.tzinfo is None:
+        utc_dt = pytz.UTC.localize(utc_dt)
+    return utc_dt.astimezone(MOSCOW_TZ)
+
+def format_moscow_time(dt):
+    """Форматировать время для отображения пользователю"""
+    if isinstance(dt, str):
+        return dt
+    moscow_dt = utc_to_moscow_time(dt) if dt.tzinfo else MOSCOW_TZ.localize(dt)
+    return moscow_dt.strftime("%Y-%m-%d %H:%M MSK")
+
 def error_handler(update: Update, context: CallbackContext):
     """
     Handle errors by logging them without crashing the bot.
     """
     if isinstance(context.error, Conflict):
+        logger.warning("Conflict error (multiple bot instances running)")
         return
     logger.error("Uncaught exception:", exc_info=context.error)
 
@@ -72,7 +105,8 @@ def ping_self(context: CallbackContext):
     try:
         base_url = os.environ.get('BASE_URL', 'https://telegram-repeat-bot.onrender.com')
         response = requests.get(base_url, timeout=5)
-        logger.info(f"Self-ping successful: {response.status_code}")
+        moscow_time = get_moscow_time().strftime("%H:%M MSK")
+        logger.info(f"Self-ping successful at {moscow_time}: {response.status_code}")
     except Exception as e:
         logger.warning(f"Self-ping failed: {e}")
 
@@ -111,16 +145,17 @@ def start(update: Update, context: CallbackContext):
     """
     try:
         chat_id = update.effective_chat.id
-        logger.info("Received /start from chat %s", chat_id)
+        moscow_time = get_moscow_time().strftime("%H:%M MSK")
+        logger.info(f"Received /start from chat {chat_id} at {moscow_time}")
         subscribe_chat(chat_id)
         context.bot.send_message(chat_id=chat_id,
-                                 text="✅ <b>Бот активирован в этом чате</b>",
+                                 text="✅ <b>Бот активирован в этом чате</b>\n⏰ <i>Время работы: московское (MSK)</i>",
                                  parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"Error in start command: {e}")
         try:
             context.bot.send_message(chat_id=update.effective_chat.id,
-                                   text="✅ Бот активирован в этом чате")
+                                   text="✅ Бот активирован в этом чате\n⏰ Время работы: московское (MSK)")
         except:
             pass
 
@@ -130,16 +165,19 @@ def test(update: Update, context: CallbackContext):
     """
     try:
         chat_id = update.effective_chat.id
-        logger.info("Received /test from chat %s", chat_id)
+        moscow_time = get_moscow_time().strftime("%H:%M MSK")
+        logger.info(f"Received /test from chat {chat_id} at {moscow_time}")
         subscribe_chat(chat_id)
+        current_time = get_moscow_time().strftime("%Y-%m-%d %H:%M MSK")
         context.bot.send_message(chat_id=chat_id,
-                                 text="✅ <b>Бот работает корректно!</b>",
+                                 text=f"✅ <b>Бот работает корректно!</b>\n⏰ <i>Текущее время: {current_time}</i>",
                                  parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"Error in test command: {e}")
         try:
+            current_time = get_moscow_time().strftime("%Y-%m-%d %H:%M MSK")
             context.bot.send_message(chat_id=update.effective_chat.id,
-                                   text="✅ Бот работает корректно!")
+                                   text=f"✅ Бот работает корректно!\n⏰ Текущее время: {current_time}")
         except:
             pass
 
@@ -198,24 +236,32 @@ def get_next_reminder_id():
 # --- Обработчики добавления разового напоминания ---
 def start_add_one_reminder(update: Update, context: CallbackContext):
     try:
-        update.message.reply_text("📅 <b>Разовое напоминание</b>\n\nВведите дату и время в формате ГГГГ-ММ-ДД ЧЧ:ММ\nНапример: 2024-07-10 16:30", parse_mode=ParseMode.HTML)
+        current_time = get_moscow_time().strftime("%Y-%m-%d %H:%M MSK")
+        update.message.reply_text(f"📅 <b>Разовое напоминание</b>\n\nВведите дату и время в формате ГГГГ-ММ-ДД ЧЧ:ММ\nНапример: 2024-07-10 16:30\n\n<i>⏰ Сейчас: {current_time}</i>", parse_mode=ParseMode.HTML)
         return REMINDER_DATE
     except Exception as e:
         logger.error(f"Error in start_add_one_reminder: {e}")
-        update.message.reply_text("📅 Разовое напоминание\n\nВведите дату и время в формате ГГГГ-ММ-ДД ЧЧ:ММ\nНапример: 2024-07-10 16:30")
+        current_time = get_moscow_time().strftime("%Y-%m-%d %H:%M MSK")
+        update.message.reply_text(f"📅 Разовое напоминание\n\nВведите дату и время в формате ГГГГ-ММ-ДД ЧЧ:ММ\nНапример: 2024-07-10 16:30\n\n⏰ Сейчас: {current_time}")
         return REMINDER_DATE
 
 def receive_reminder_datetime(update: Update, context: CallbackContext):
     text = update.message.text.strip()
     try:
-        dt = datetime.strptime(text, "%Y-%m-%d %H:%M")
-        if dt < datetime.now():
+        # Парсим введенное время как московское
+        moscow_dt = datetime.strptime(text, "%Y-%m-%d %H:%M")
+        moscow_dt = MOSCOW_TZ.localize(moscow_dt)
+        
+        # Проверяем, что время в будущем
+        if moscow_dt < get_moscow_time():
             try:
-                update.message.reply_text("⚠️ <b>Ошибка:</b> Дата и время уже прошли.\nВведите корректную дату и время:", parse_mode=ParseMode.HTML)
+                update.message.reply_text("⚠️ <b>Ошибка:</b> Дата и время уже прошли.\nВведите корректную дату и время в московском времени:", parse_mode=ParseMode.HTML)
             except:
-                update.message.reply_text("⚠️ Ошибка: Дата и время уже прошли.\nВведите корректную дату и время:")
+                update.message.reply_text("⚠️ Ошибка: Дата и время уже прошли.\nВведите корректную дату и время в московском времени:")
             return REMINDER_DATE
+        
         context.user_data["reminder_datetime"] = text
+        context.user_data["reminder_datetime_moscow"] = moscow_dt
         try:
             update.message.reply_text("✏️ <b>Текст напоминания</b>\n\nВведите текст напоминания (поддерживаются HTML теги и ссылки):", parse_mode=ParseMode.HTML)
         except:
@@ -223,9 +269,9 @@ def receive_reminder_datetime(update: Update, context: CallbackContext):
         return REMINDER_TEXT
     except Exception:
         try:
-            update.message.reply_text("❌ <b>Некорректный формат</b>\n\nВведите дату и время в формате ГГГГ-ММ-ДД ЧЧ:ММ:", parse_mode=ParseMode.HTML)
+            update.message.reply_text("❌ <b>Некорректный формат</b>\n\nВведите дату и время в формате ГГГГ-ММ-ДД ЧЧ:ММ (московское время):", parse_mode=ParseMode.HTML)
         except:
-            update.message.reply_text("❌ Некорректный формат\n\nВведите дату и время в формате ГГГГ-ММ-ДД ЧЧ:ММ:")
+            update.message.reply_text("❌ Некорректный формат\n\nВведите дату и время в формате ГГГГ-ММ-ДД ЧЧ:ММ (московское время):")
         return REMINDER_DATE
 
 def receive_reminder_text(update: Update, context: CallbackContext):
@@ -267,10 +313,12 @@ def receive_reminder_text(update: Update, context: CallbackContext):
 # --- Обработчики добавления ежедневного напоминания ---
 def start_add_daily_reminder(update: Update, context: CallbackContext):
     try:
-        update.message.reply_text("🔄 <b>Ежедневное напоминание</b>\n\nВведите время в формате ЧЧ:ММ\nНапример: 08:00", parse_mode=ParseMode.HTML)
+        current_time = get_moscow_time().strftime("%H:%M MSK")
+        update.message.reply_text(f"🔄 <b>Ежедневное напоминание</b>\n\nВведите время в формате ЧЧ:ММ\nНапример: 08:00\n\n<i>⏰ Сейчас: {current_time}</i>", parse_mode=ParseMode.HTML)
         return DAILY_TIME
     except:
-        update.message.reply_text("🔄 Ежедневное напоминание\n\nВведите время в формате ЧЧ:ММ\nНапример: 08:00")
+        current_time = get_moscow_time().strftime("%H:%M MSK")
+        update.message.reply_text(f"🔄 Ежедневное напоминание\n\nВведите время в формате ЧЧ:ММ\nНапример: 08:00\n\n⏰ Сейчас: {current_time}")
         return DAILY_TIME
 
 def receive_daily_time(update: Update, context: CallbackContext):
@@ -279,15 +327,15 @@ def receive_daily_time(update: Update, context: CallbackContext):
         time.strptime(text, "%H:%M")
         context.user_data["daily_time"] = text
         try:
-            update.message.reply_text("✏️ <b>Текст ежедневного напоминания</b>\n\nВведите текст (поддерживаются HTML теги и ссылки):", parse_mode=ParseMode.HTML)
+            update.message.reply_text("✏️ <b>Текст ежедневного напоминания</b>\n\nВведите текст (поддерживаются HTML теги и ссылки):\n<i>⏰ Время указано московское (MSK)</i>", parse_mode=ParseMode.HTML)
         except:
-            update.message.reply_text("✏️ Текст ежедневного напоминания\n\nВведите текст:")
+            update.message.reply_text("✏️ Текст ежедневного напоминания\n\nВведите текст:\n⏰ Время указано московское (MSK)")
         return DAILY_TEXT
     except Exception:
         try:
-            update.message.reply_text("❌ <b>Некорректный формат</b>\n\nВведите время в формате ЧЧ:ММ:", parse_mode=ParseMode.HTML)
+            update.message.reply_text("❌ <b>Некорректный формат</b>\n\nВведите время в формате ЧЧ:ММ (московское время):", parse_mode=ParseMode.HTML)
         except:
-            update.message.reply_text("❌ Некорректный формат\n\nВведите время в формате ЧЧ:ММ:")
+            update.message.reply_text("❌ Некорректный формат\n\nВведите время в формате ЧЧ:ММ (московское время):")
         return DAILY_TIME
 
 def receive_daily_text(update: Update, context: CallbackContext):
@@ -327,10 +375,12 @@ def receive_daily_text(update: Update, context: CallbackContext):
 # --- Обработчики добавления еженедельного напоминания ---
 def start_add_weekly_reminder(update: Update, context: CallbackContext):
     try:
-        update.message.reply_text("📆 <b>Еженедельное напоминание</b>\n\nВведите день недели:\nПонедельник, Вторник, Среда, Четверг, Пятница, Суббота, Воскресенье", parse_mode=ParseMode.HTML)
+        current_time = get_moscow_time().strftime("%H:%M MSK")
+        update.message.reply_text(f"📆 <b>Еженедельное напоминание</b>\n\nВведите день недели:\nПонедельник, Вторник, Среда, Четверг, Пятница, Суббота, Воскресенье\n\n<i>⏰ Сейчас: {current_time}</i>", parse_mode=ParseMode.HTML)
         return WEEKLY_DAY
     except:
-        update.message.reply_text("📆 Еженедельное напоминание\n\nВведите день недели:\nПонедельник, Вторник, Среда, Четверг, Пятница, Суббота, Воскресенье")
+        current_time = get_moscow_time().strftime("%H:%M MSK")
+        update.message.reply_text(f"📆 Еженедельное напоминание\n\nВведите день недели:\nПонедельник, Вторник, Среда, Четверг, Пятница, Суббота, Воскресенье\n\n⏰ Сейчас: {current_time}")
         return WEEKLY_DAY
 
 def receive_weekly_day(update: Update, context: CallbackContext):
@@ -355,15 +405,15 @@ def receive_weekly_time(update: Update, context: CallbackContext):
         time.strptime(text, "%H:%M")
         context.user_data["weekly_time"] = text
         try:
-            update.message.reply_text("✏️ <b>Текст еженедельного напоминания</b>\n\nВведите текст (поддерживаются HTML теги и ссылки):", parse_mode=ParseMode.HTML)
+            update.message.reply_text("✏️ <b>Текст еженедельного напоминания</b>\n\nВведите текст (поддерживаются HTML теги и ссылки):\n<i>⏰ Время указано московское (MSK)</i>", parse_mode=ParseMode.HTML)
         except:
-            update.message.reply_text("✏️ Текст еженедельного напоминания\n\nВведите текст:")
+            update.message.reply_text("✏️ Текст еженедельного напоминания\n\nВведите текст:\n⏰ Время указано московское (MSK)")
         return WEEKLY_TEXT
     except Exception:
         try:
-            update.message.reply_text("❌ <b>Некорректный формат</b>\n\nВведите время в формате ЧЧ:ММ:", parse_mode=ParseMode.HTML)
+            update.message.reply_text("❌ <b>Некорректный формат</b>\n\nВведите время в формате ЧЧ:ММ (московское время):", parse_mode=ParseMode.HTML)
         except:
-            update.message.reply_text("❌ Некорректный формат\n\nВведите время в формате ЧЧ:ММ:")
+            update.message.reply_text("❌ Некорректный формат\n\nВведите время в формате ЧЧ:ММ (московское время):")
         return WEEKLY_TIME
 
 def receive_weekly_text(update: Update, context: CallbackContext):
@@ -586,7 +636,7 @@ def next_notification(update: Update, context: CallbackContext):
                 update.message.reply_text("📭 Нет запланированных напоминаний")
             return
         
-        now = datetime.now()
+        now_moscow = get_moscow_time()
         soonest = None
         soonest_time = None
         days = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
@@ -595,16 +645,18 @@ def next_notification(update: Update, context: CallbackContext):
             t = None
             if r["type"] == "once":
                 try:
-                    t = datetime.strptime(r["datetime"], "%Y-%m-%d %H:%M")
-                    if t < now:  # Пропускаем прошедшие разовые напоминания
+                    # Парсим как московское время
+                    naive_dt = datetime.strptime(r["datetime"], "%Y-%m-%d %H:%M")
+                    t = MOSCOW_TZ.localize(naive_dt)
+                    if t < now_moscow:  # Пропускаем прошедшие разовые напоминания
                         continue
                 except ValueError:
                     continue
             elif r["type"] == "daily":
                 try:
                     h, m = map(int, r["time"].split(":"))
-                    candidate = now.replace(hour=h, minute=m, second=0, microsecond=0)
-                    if candidate < now:
+                    candidate = now_moscow.replace(hour=h, minute=m, second=0, microsecond=0)
+                    if candidate < now_moscow:
                         candidate += timedelta(days=1)
                     t = candidate
                 except ValueError:
@@ -613,9 +665,9 @@ def next_notification(update: Update, context: CallbackContext):
                 try:
                     weekday = days.index(r["day"])
                     h, m = map(int, r["time"].split(":"))
-                    candidate = now.replace(hour=h, minute=m, second=0, microsecond=0)
-                    days_ahead = (weekday - now.weekday() + 7) % 7
-                    if days_ahead == 0 and candidate < now:
+                    candidate = now_moscow.replace(hour=h, minute=m, second=0, microsecond=0)
+                    days_ahead = (weekday - now_moscow.weekday() + 7) % 7
+                    if days_ahead == 0 and candidate < now_moscow:
                         days_ahead = 7
                     t = candidate + timedelta(days=days_ahead)
                 except (ValueError, IndexError):
@@ -632,7 +684,8 @@ def next_notification(update: Update, context: CallbackContext):
                 update.message.reply_text("📭 Нет запланированных напоминаний")
             return
         
-        time_diff = soonest_time - now
+        time_diff = soonest_time - now_moscow
+        
         if time_diff.days > 0:
             time_str = f"через {time_diff.days} дн."
         elif time_diff.seconds > 3600:
@@ -645,13 +698,17 @@ def next_notification(update: Update, context: CallbackContext):
             time_str = "менее чем через минуту"
         
         safe_text = safe_html_escape(soonest.get('text', ''))
+        current_time = now_moscow.strftime("%H:%M MSK")
         
         if soonest["type"] == "once":
-            msg = f"📅 Ближайшее напоминание\n\nРазово: {soonest['datetime']}\n⏰ {time_str}\n💬 {safe_text}"
+            reminder_time = soonest_time.strftime("%Y-%m-%d %H:%M MSK")
+            msg = f"📅 <b>Ближайшее напоминание</b>\n\n🕐 Разово: {reminder_time}\n⏰ {time_str}\n💬 {safe_text}\n\n<i>Сейчас: {current_time}</i>"
         elif soonest["type"] == "daily":
-            msg = f"🔄 Ближайшее напоминание\n\nЕжедневно: {soonest['time']}\n⏰ {time_str}\n💬 {safe_text}"
+            reminder_time = soonest_time.strftime("%H:%M MSK")
+            msg = f"🔄 <b>Ближайшее напоминание</b>\n\n🕐 Ежедневно: {reminder_time}\n⏰ {time_str}\n💬 {safe_text}\n\n<i>Сейчас: {current_time}</i>"
         elif soonest["type"] == "weekly":
-            msg = f"📆 Ближайшее напоминание\n\nЕженедельно: {soonest['day'].title()} {soonest['time']}\n⏰ {time_str}\n💬 {safe_text}"
+            reminder_time = soonest_time.strftime("%H:%M MSK")
+            msg = f"📆 <b>Ближайшее напоминание</b>\n\n🕐 Еженедельно: {soonest['day'].title()} {reminder_time}\n⏰ {time_str}\n💬 {safe_text}\n\n<i>Сейчас: {current_time}</i>"
         
         try:
             update.message.reply_text(msg, parse_mode=ParseMode.HTML)
@@ -685,17 +742,20 @@ def send_reminder(context: CallbackContext):
         with open("subscribed_chats.json", "r") as f:
             chats = json.load(f)
         
-        reminder_text = f"🔔 НАПОМИНАНИЕ\n\n{reminder.get('text', '')}"
+        moscow_time = get_moscow_time().strftime("%H:%M MSK")
+        reminder_text = f"🔔 <b>НАПОМИНАНИЕ</b> <i>({moscow_time})</i>\n\n{reminder.get('text', '')}"
         
         for cid in chats:
             try:
                 context.bot.send_message(chat_id=cid, text=reminder_text, parse_mode=ParseMode.HTML)
+                logger.info(f"Reminder sent to chat {cid} at {moscow_time}")
             except Exception as e:
                 logger.error(f"Failed to send reminder to chat {cid}: {e}")
                 # Fallback без HTML
                 try:
                     clean_text = reminder_text.replace('<b>', '').replace('</b>', '').replace('<i>', '').replace('</i>', '')
                     context.bot.send_message(chat_id=cid, text=clean_text)
+                    logger.info(f"Fallback reminder sent to chat {cid} at {moscow_time}")
                 except Exception as e2:
                     logger.error(f"Failed to send fallback reminder to chat {cid}: {e2}")
         
@@ -704,13 +764,14 @@ def send_reminder(context: CallbackContext):
             reminders = load_reminders()
             reminders = [r for r in reminders if r.get("id") != reminder.get("id")]
             save_reminders(reminders)
+            logger.info(f"One-time reminder {reminder.get('id')} removed after sending")
             
     except Exception as e:
         logger.error(f"Error in send_reminder: {e}")
 
 def schedule_reminder(job_queue, reminder):
     """
-    Добавляет задание в JobQueue для данного напоминания.
+    Добавляет задание в JobQueue для данного напоминания с учетом московского времени.
     """
     try:
         # Сначала удаляем существующее задание с таким же ID, если есть
@@ -720,12 +781,26 @@ def schedule_reminder(job_queue, reminder):
                 job.schedule_removal()
         
         if reminder["type"] == "once":
-            run_dt = datetime.strptime(reminder["datetime"], "%Y-%m-%d %H:%M")
-            if run_dt > datetime.now():  # Планируем только будущие напоминания
-                job_queue.run_once(send_reminder, run_dt, context=reminder, name=f"reminder_{reminder.get('id')}")
+            # Парсим как московское время и конвертируем в UTC для планировщика
+            moscow_dt = datetime.strptime(reminder["datetime"], "%Y-%m-%d %H:%M")
+            moscow_dt = MOSCOW_TZ.localize(moscow_dt)
+            utc_dt = moscow_dt.astimezone(pytz.UTC).replace(tzinfo=None)
+            
+            if moscow_dt > get_moscow_time():  # Планируем только будущие напоминания
+                job_queue.run_once(send_reminder, utc_dt, context=reminder, name=f"reminder_{reminder.get('id')}")
+                logger.info(f"Scheduled one-time reminder {reminder.get('id')} for {moscow_dt.strftime('%Y-%m-%d %H:%M MSK')}")
+                
         elif reminder["type"] == "daily":
             h, m = map(int, reminder["time"].split(":"))
-            job_queue.run_daily(send_reminder, dt_time(hour=h, minute=m), context=reminder, name=f"reminder_{reminder.get('id')}")
+            # Создаем время в московском часовом поясе, затем конвертируем в UTC
+            moscow_time = dt_time(hour=h, minute=m)
+            # Для ежедневных напоминаний нужно учесть смещение UTC
+            utc_hour = (h - 3) % 24  # MSK = UTC+3
+            utc_time = dt_time(hour=utc_hour, minute=m)
+            
+            job_queue.run_daily(send_reminder, utc_time, context=reminder, name=f"reminder_{reminder.get('id')}")
+            logger.info(f"Scheduled daily reminder {reminder.get('id')} for {h:02d}:{m:02d} MSK (UTC: {utc_hour:02d}:{m:02d})")
+            
         elif reminder["type"] == "weekly":
             days_map = {
                 "понедельник": 0, "вторник": 1, "среда": 2,
@@ -733,13 +808,20 @@ def schedule_reminder(job_queue, reminder):
             }
             weekday = days_map[reminder["day"].lower()]
             h, m = map(int, reminder["time"].split(":"))
+            
+            # Конвертируем московское время в UTC
+            utc_hour = (h - 3) % 24  # MSK = UTC+3
+            utc_time = dt_time(hour=utc_hour, minute=m)
+            
             job_queue.run_daily(
                 send_reminder,
-                dt_time(hour=h, minute=m),
+                utc_time,
                 context=reminder,
                 days=(weekday,),
                 name=f"reminder_{reminder.get('id')}"
             )
+            logger.info(f"Scheduled weekly reminder {reminder.get('id')} for {reminder['day']} {h:02d}:{m:02d} MSK")
+            
     except Exception as e:
         logger.error(f"Error scheduling reminder {reminder.get('id', 'unknown')}: {e}")
 
