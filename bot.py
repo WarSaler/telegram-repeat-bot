@@ -10,6 +10,7 @@ import pytz
 import requests
 from telegram import Update, ParseMode
 from telegram.ext import Updater, CommandHandler, CallbackContext, Job, ConversationHandler, MessageHandler, Filters
+from telegram.error import Conflict
 import html
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -29,8 +30,6 @@ def start_health_server():
     port = int(os.environ.get('PORT', 5000))
     server = HTTPServer(('0.0.0.0', port), HealthHandler)
     server.serve_forever()
-from telegram.ext import MessageHandler
-from telegram.error import Conflict
 
 # --- Глобальный файл напоминаний ---
 REMINDERS_FILE = "reminders.json"
@@ -45,7 +44,6 @@ def error_handler(update: Update, context: CallbackContext):
     """
     Handle errors by logging them without crashing the bot.
     """
-    from telegram.error import Conflict
     if isinstance(context.error, Conflict):
         return
     logger.error("Uncaught exception:", exc_info=context.error)
@@ -65,12 +63,6 @@ def subscribe_chat(chat_id):
 def save_chats(chats):
     with open("subscribed_chats.json", "w") as f:
         json.dump(chats, f)
-
-def subscribe_and_pass(update: Update, context: CallbackContext):
-    """
-    Автоподписка текущего чата на рассылку при вводе любой команды.
-    """
-    subscribe_chat(update.effective_chat.id)
 
 # --- /start и /test команды ---
 def start(update: Update, context: CallbackContext):
@@ -94,7 +86,6 @@ def test(update: Update, context: CallbackContext):
     context.bot.send_message(chat_id=chat_id,
                              text="✅ Бот работает корректно!",
                              parse_mode=ParseMode.HTML)
-
 
 # --- Константы для ConversationHandler состояний ---
 REMINDER_DATE, REMINDER_TEXT = range(2)
@@ -375,25 +366,20 @@ def main():
     token = os.environ['BOT_TOKEN']
     port = int(os.environ.get('PORT', 8000))
     updater = Updater(token=token, use_context=True)
+    
     # Reset any existing webhook so polling can start cleanly
     try:
         res = updater.bot.delete_webhook(drop_pending_updates=True)
         logger.info("Webhook deleted: %s", res)
     except Exception as e:
         logger.error("Error deleting webhook: %s", e)
+    
     dp = updater.dispatcher
-    # Echo handler for debugging responsiveness
-    def echo(update: Update, context: CallbackContext):
-        logger.info("Echo handler received message from %s: %s", update.effective_chat.id, update.message.text)
-        context.bot.send_message(chat_id=update.effective_chat.id, text="Echo: " + update.message.text)
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))
-
-    # Removed unknown_command handler and its registration
-    dp.add_error_handler(error_handler)
-
-
+    
+    # Добавляем обработчики команд ПЕРВЫМИ
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("test", test))
+    
     conv = ConversationHandler(
         entry_points=[CommandHandler("remind", start_add_one_reminder)],
         states={
@@ -404,6 +390,7 @@ def main():
         allow_reentry=True,
     )
     dp.add_handler(conv)
+    
     conv_daily = ConversationHandler(
         entry_points=[CommandHandler("remind_daily", start_add_daily_reminder)],
         states={
@@ -426,7 +413,9 @@ def main():
         allow_reentry=True,
     )
     dp.add_handler(conv_weekly)
+    
     dp.add_handler(CommandHandler("list_reminders", list_reminders))
+    
     conv_del = ConversationHandler(
         entry_points=[CommandHandler("del_reminder", start_delete_reminder)],
         states={REM_DEL_ID: [MessageHandler(Filters.text & ~Filters.command, confirm_delete_reminder)]},
@@ -434,14 +423,19 @@ def main():
         allow_reentry=True,
     )
     dp.add_handler(conv_del)
+    
     dp.add_handler(CommandHandler("clear_reminders", clear_reminders))
     dp.add_handler(CommandHandler("next", next_notification))
+
+    # Добавляем обработчик ошибок
+    dp.add_error_handler(error_handler)
 
     # Запланировать все сохранённые напоминания
     schedule_all_reminders(updater.job_queue)
 
     # Health check server for Render free tier
     threading.Thread(target=start_health_server, daemon=True).start()
+    
     # Always run in polling mode
     updater.bot.delete_webhook(drop_pending_updates=True)
     updater.start_polling(drop_pending_updates=True)
