@@ -8,10 +8,44 @@ import pytz
 from typing import Dict, List, Any, Optional
 import gspread
 from google.oauth2.service_account import Credentials
+import time
+import random
 
 # Константы
 MOSCOW_TZ = pytz.timezone('Europe/Moscow')
 logger = logging.getLogger(__name__)
+
+def handle_rate_limit_with_retry(func, max_retries: int = 3, base_delay: float = 1.0):
+    """
+    Обработка rate limiting с экспоненциальной задержкой и jitter
+    
+    Args:
+        func: Функция для выполнения
+        max_retries: Максимальное количество попыток
+        base_delay: Базовая задержка в секундах
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            return func()
+        except Exception as e:
+            error_str = str(e)
+            
+            # Проверяем на ошибку rate limiting
+            if "429" in error_str or "RATE_LIMIT_EXCEEDED" in error_str or "Quota exceeded" in error_str:
+                if attempt < max_retries:
+                    # Экспоненциальная задержка с jitter
+                    delay = base_delay * (2 ** attempt) + random.uniform(0.1, 0.5)
+                    logger.warning(f"⏱️ Rate limit exceeded. Retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries + 1})")
+                    time.sleep(delay)
+                    continue
+                else:
+                    logger.error(f"❌ Rate limit exceeded after {max_retries + 1} attempts. Giving up.")
+                    raise
+            else:
+                # Не rate limiting ошибка - пробрасываем сразу
+                raise
+    
+    return None
 
 class SheetsManager:
     def __init__(self):
@@ -114,21 +148,21 @@ class SheetsManager:
     
     def log_reminder_action(self, action: str, user_id: int, username: str, 
                           chat_id: int, details: str, reminder_id: int = None):
-        """Логирование действий с напоминаниями"""
+        """Логирование действий с напоминаниями с обработкой rate limiting"""
         if not self.is_initialized:
             return
         
-        try:
+        def _log_operation():
             worksheet = self.spreadsheet.worksheet('Operation_Logs')
-            now_utc = datetime.now(pytz.UTC)
-            now_msk = now_utc.astimezone(MOSCOW_TZ)
+            
+            # Московское время
+            moscow_time = datetime.now(MOSCOW_TZ).strftime('%Y-%m-%d %H:%M:%S')
             
             row = [
-                now_utc.strftime('%Y-%m-%d %H:%M:%S'),
-                now_msk.strftime('%Y-%m-%d %H:%M:%S'),
+                moscow_time,
                 action,
                 user_id,
-                username or 'Unknown',
+                username,
                 chat_id,
                 details,
                 reminder_id or ''
@@ -136,16 +170,23 @@ class SheetsManager:
             
             worksheet.append_row(row)
             logger.info(f"Logged action: {action} by {username}")
+        
+        try:
+            # Используем retry механизм для обработки rate limiting
+            handle_rate_limit_with_retry(_log_operation, max_retries=2, base_delay=0.5)
             
         except Exception as e:
             logger.error(f"Error logging reminder action: {e}")
+            return False
+        
+        return True
     
     def sync_reminder(self, reminder: Dict[str, Any], action: str = 'UPDATE'):
-        """Синхронизация напоминания с Google Sheets"""
+        """Синхронизация напоминания с Google Sheets с обработкой rate limiting"""
         if not self.is_initialized:
             return
         
-        try:
+        def _sync_operation():
             worksheet = self.spreadsheet.worksheet('Reminders')
             
             # Подготавливаем данные для записи
@@ -190,9 +231,17 @@ class SheetsManager:
                     worksheet.append_row(row_data)
             
             logger.info(f"Synced reminder {reminder.get('id')} with action {action}")
+        
+        try:
+            # Используем retry механизм для обработки rate limiting
+            handle_rate_limit_with_retry(_sync_operation, max_retries=3, base_delay=1.0)
             
         except Exception as e:
             logger.error(f"Error syncing reminder: {e}")
+            # Возвращаем False чтобы вызывающий код знал об ошибке
+            return False
+        
+        return True
     
     def log_reminder_sent(self, reminder_id: int, chat_id: int, status: str, 
                          error: str = None, text_preview: str = ''):
@@ -275,11 +324,11 @@ class SheetsManager:
             logger.error(f"Error updating chat stats: {e}")
     
     def update_reminders_count(self, chat_id: int):
-        """Обновление количества напоминаний для чата"""
+        """Обновление количества напоминаний для чата с обработкой rate limiting"""
         if not self.is_initialized:
             return
         
-        try:
+        def _update_operation():
             # Подсчитываем активные напоминания для чата
             reminders_sheet = self.spreadsheet.worksheet('Reminders')
             try:
@@ -311,9 +360,16 @@ class SheetsManager:
                 logger.info(f"📊 Updated reminders count for chat {chat_id}: {active_count}")
             else:
                 logger.warning(f"⚠️ Chat {chat_id} not found in Chat_Stats for reminders count update")
+        
+        try:
+            # Используем retry механизм для обработки rate limiting
+            handle_rate_limit_with_retry(_update_operation, max_retries=3, base_delay=1.0)
             
         except Exception as e:
             logger.error(f"Error updating reminders count: {e}")
+            return False
+        
+        return True
     
     def backup_all_reminders(self, reminders: List[Dict[str, Any]]):
         """Полное резервное копирование всех напоминаний"""

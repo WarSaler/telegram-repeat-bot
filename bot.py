@@ -886,7 +886,8 @@ def clear_reminders(update: Update, context: CallbackContext):
                 
                 # Синхронизируем каждое напоминание - устанавливаем статус "Deleted"
                 synced_count = 0
-                for reminder in all_reminders:
+                failed_count = 0
+                for i, reminder in enumerate(all_reminders):
                     try:
                         reminder_data = {
                             "id": reminder.get('id'),
@@ -902,20 +903,45 @@ def clear_reminders(update: Update, context: CallbackContext):
                         }
                         
                         # ВАЖНО: Используем действие "DELETE" для установки статуса "Deleted"
-                        sheets_manager.sync_reminder(reminder_data, "DELETE")
-                        synced_count += 1
+                        success = sheets_manager.sync_reminder(reminder_data, "DELETE")
+                        if success:
+                            synced_count += 1
+                        else:
+                            failed_count += 1
+                            logger.warning(f"⚠️ Failed to sync reminder #{reminder.get('id')} deletion")
+                        
+                        # Добавляем небольшую задержку между операциями для предотвращения rate limiting
+                        if i < len(all_reminders) - 1:  # Не задерживаем после последнего
+                            time.sleep(0.2)  # 200ms задержка между запросами
                         
                     except Exception as e:
                         logger.error(f"❌ Error syncing reminder #{reminder.get('id')} deletion: {e}")
+                        failed_count += 1
                         # Продолжаем даже если одно напоминание не синхронизировалось
                 
+                # Обновляем сообщение о прогрессе после синхронизации напоминаний
+                try:
+                    context.bot.edit_message_text(
+                        chat_id=progress_message.chat_id,
+                        message_id=progress_message.message_id,
+                        text=f"🔄 <b>Обновление статистики...</b>\n\n"
+                             f"✅ Напоминания: {synced_count}/{reminders_count}\n"
+                             f"❌ Ошибки: {failed_count}",
+                        parse_mode=ParseMode.HTML
+                    )
+                except:
+                    pass
+                
+                # Небольшая задержка перед обновлением статистики
+                time.sleep(0.5)
+                
                 # Обновляем количество напоминаний для чата (должно стать 0)
-                sheets_manager.update_reminders_count(chat_id)
+                count_update_success = sheets_manager.update_reminders_count(chat_id)
                 
                 # Финальное логирование
-                sheets_manager.log_reminder_action("CLEAR_ALL_COMPLETE", update.effective_user.id, username, chat_id, f"Completed mass deletion. Synced: {synced_count}/{reminders_count}", "")
+                sheets_manager.log_reminder_action("CLEAR_ALL_COMPLETE", update.effective_user.id, username, chat_id, f"Completed mass deletion. Synced: {synced_count}/{reminders_count}, Failed: {failed_count}", "")
                 
-                logger.info(f"📊 Successfully synced {synced_count}/{reminders_count} reminders deletion to Google Sheets (status: Deleted)")
+                logger.info(f"📊 Mass deletion summary: {synced_count}/{reminders_count} reminders synced, {failed_count} failed")
                 
                 # Обновляем сообщение о прогрессе
                 try:
@@ -923,7 +949,8 @@ def clear_reminders(update: Update, context: CallbackContext):
                         chat_id=progress_message.chat_id,
                         message_id=progress_message.message_id,
                         text=f"🔄 <b>Завершение удаления...</b>\n\n"
-                             f"✅ Google Sheets обновлен ({synced_count}/{reminders_count})",
+                             f"✅ Google Sheets обновлен ({synced_count}/{reminders_count})"
+                             f"\n{'⚠️ Статистика чатов: ошибка обновления' if not count_update_success else '✅ Статистика чатов обновлена'}",
                         parse_mode=ParseMode.HTML
                     )
                 except:
@@ -955,11 +982,19 @@ def clear_reminders(update: Update, context: CallbackContext):
             try:
                 # Если есть progress_message, обновляем его
                 if 'progress_message' in locals():
+                    # Формируем детальное сообщение с учетом успешности операций
+                    if 'synced_count' in locals() and 'failed_count' in locals():
+                        if failed_count == 0:
+                            final_text = f"🗑 <b>Все напоминания удалены ({reminders_count})</b>\n<i>✅ Статус всех напоминаний в Google Sheets изменен на Deleted</i>"
+                        else:
+                            final_text = f"🗑 <b>Напоминания удалены ({reminders_count})</b>\n<i>✅ Синхронизировано: {synced_count}/{reminders_count}\n⚠️ Ошибок синхронизации: {failed_count}</i>"
+                    else:
+                        final_text = f"🗑 <b>Все напоминания удалены ({reminders_count})</b>\n<i>⚠️ Google Sheets недоступен</i>"
+                    
                     context.bot.edit_message_text(
                         chat_id=progress_message.chat_id,
                         message_id=progress_message.message_id,
-                        text=f"🗑 <b>Все напоминания удалены ({reminders_count})</b>\n"
-                             f"<i>Статус в Google Sheets изменен на Deleted</i>",
+                        text=final_text,
                         parse_mode=ParseMode.HTML
                     )
                 else:
