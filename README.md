@@ -26,15 +26,23 @@ Telegram-бот для создания напоминаний с **автома
 
 ```
 Reminder_now_bot_2.0/
-├── bot.py                      # Основной файл бота с логикой напоминаний
-├── sheets_integration.py       # Google Sheets интеграция и автовосстановление  
-├── requirements.txt           # Python зависимости
-├── Dockerfile                 # Docker конфигурация для деплоя
-├── subscribed_chats.json      # Список подписанных чатов (генерируется автоматически)
-├── reminders.json             # Локальное хранение напоминаний (генерируется автоматически)
-├── GOOGLE_SHEETS_SETUP.md     # Инструкция по настройке Google Sheets
-└── reminder-bot-service.json  # Service Account credentials (не в репозитории)
+├── 📄 bot.py                      # Основной файл бота с логикой напоминаний
+├── 📄 sheets_integration.py       # Google Sheets интеграция и автовосстановление
+├── 📄 requirements.txt           # Python зависимости
+├── 📄 Dockerfile                 # Docker конфигурация для деплоя
+├── 📄 README.md                  # Основная документация проекта
+├── 📄 .gitignore                 # Исключения для Git
+├── 📂 docs/                      # Техническая документация
+│   ├── GOOGLE_SHEETS_SETUP.md    # Настройка Google Sheets
+│   ├── RENDER_FIX.md            # Решения проблем деплоя
+│   ├── FIXES_SUMMARY.md         # История исправлений
+│   └── AUTO_RECOVERY_SUMMARY.md # Система автовосстановления
+├── 📄 reminders.json             # 🔄 Локальные напоминания (генерируется автоматически)
+├── 📄 subscribed_chats.json      # 🔄 Подписанные чаты (генерируется автоматически)
+└── 📄 service-account.json       # 🔐 Google Service Account (не в репозитории)
 ```
+
+> **📝 Примечание:** Файлы помеченные 🔄 генерируются автоматически при работе бота и не входят в репозиторий.
 
 ## 🚀 Быстрый старт
 
