@@ -120,7 +120,7 @@ def subscribe_chat(chat_id, chat_name="Unknown", chat_type="private", members_co
         logger.info(f"🆕 New chat subscribed: {chat_id} ({chat_name})")
         
         # ✅ МГНОВЕННАЯ ЗАПИСЬ В GOOGLE SHEETS
-        if SHEETS_AVAILABLE and sheets_manager:
+        if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
             try:
                 # Обновляем статистику чата
                 sheets_manager.update_chat_stats(chat_id, chat_name, chat_type, members_count)
@@ -140,20 +140,26 @@ def subscribe_chat(chat_id, chat_name="Unknown", chat_type="private", members_co
                 # Обновляем список подписанных чатов в Google Sheets
                 sheets_manager.sync_subscribed_chats_to_sheets(chats)
                 
-                logger.info(f"📊 Instantly synced new chat {chat_id} to Google Sheets")
+                logger.info(f"📊 Successfully synced new chat {chat_id} to Google Sheets")
                 
             except Exception as e:
                 logger.error(f"❌ Error syncing new chat to Google Sheets: {e}")
+        elif SHEETS_AVAILABLE and sheets_manager and not sheets_manager.is_initialized:
+            logger.warning(f"📵 Google Sheets not initialized - chat {chat_id} subscription not synced")
+            logger.warning("   Check GOOGLE_SHEETS_ID and GOOGLE_SHEETS_CREDENTIALS environment variables")
         else:
             logger.warning("📵 Google Sheets not available for new chat sync")
     else:
         # Если чат уже существует, обновляем его информацию
-        if SHEETS_AVAILABLE and sheets_manager:
+        if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
             try:
                 sheets_manager.update_chat_stats(chat_id, chat_name, chat_type, members_count)
                 logger.info(f"📊 Updated existing chat {chat_id} info in Google Sheets")
             except Exception as e:
                 logger.error(f"❌ Error updating chat info in Google Sheets: {e}")
+        elif SHEETS_AVAILABLE and sheets_manager and not sheets_manager.is_initialized:
+            logger.warning(f"📵 Google Sheets not initialized - chat {chat_id} info not updated")
+            logger.warning("   Check GOOGLE_SHEETS_ID and GOOGLE_SHEETS_CREDENTIALS environment variables")
 
 def save_chats(chats):
     with open("subscribed_chats.json", "w") as f:
@@ -378,7 +384,7 @@ def receive_reminder_text(update: Update, context: CallbackContext):
         save_reminders(reminders)
         
         # ✅ ИНТЕГРАЦИЯ С GOOGLE SHEETS
-        if SHEETS_AVAILABLE and sheets_manager:
+        if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
             try:
                 chat_id = update.effective_chat.id
                 chat = update.effective_chat
@@ -404,9 +410,14 @@ def receive_reminder_text(update: Update, context: CallbackContext):
                 # Обновляем количество напоминаний для чата
                 sheets_manager.update_reminders_count(chat_id)
                 
-                logger.info(f"📊 Synced reminder #{new_id} to Google Sheets")
+                logger.info(f"📊 Successfully synced reminder #{new_id} to Google Sheets")
             except Exception as e:
                 logger.error(f"❌ Error syncing reminder to Google Sheets: {e}")
+        elif SHEETS_AVAILABLE and sheets_manager and not sheets_manager.is_initialized:
+            logger.warning(f"📵 Google Sheets not initialized - reminder #{new_id} not synced")
+            logger.warning("   Check GOOGLE_SHEETS_ID and GOOGLE_SHEETS_CREDENTIALS environment variables")
+        else:
+            logger.warning("📵 Google Sheets not available for reminder sync")
         
         # Планируем напоминание
         schedule_reminder(context.dispatcher.job_queue, reminders[-1])
@@ -471,7 +482,7 @@ def receive_daily_text(update: Update, context: CallbackContext):
         save_reminders(reminders)
         
         # ✅ ИНТЕГРАЦИЯ С GOOGLE SHEETS
-        if SHEETS_AVAILABLE and sheets_manager:
+        if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
             try:
                 chat_id = update.effective_chat.id
                 chat = update.effective_chat
@@ -497,9 +508,14 @@ def receive_daily_text(update: Update, context: CallbackContext):
                 # Обновляем количество напоминаний для чата
                 sheets_manager.update_reminders_count(chat_id)
                 
-                logger.info(f"📊 Synced daily reminder #{new_id} to Google Sheets")
+                logger.info(f"📊 Successfully synced daily reminder #{new_id} to Google Sheets")
             except Exception as e:
                 logger.error(f"❌ Error syncing daily reminder to Google Sheets: {e}")
+        elif SHEETS_AVAILABLE and sheets_manager and not sheets_manager.is_initialized:
+            logger.warning(f"📵 Google Sheets not initialized - daily reminder #{new_id} not synced")
+            logger.warning("   Check GOOGLE_SHEETS_ID and GOOGLE_SHEETS_CREDENTIALS environment variables")
+        else:
+            logger.warning("📵 Google Sheets not available for daily reminder sync")
         
         # Планируем напоминание
         schedule_reminder(context.dispatcher.job_queue, reminders[-1])
@@ -581,7 +597,7 @@ def receive_weekly_text(update: Update, context: CallbackContext):
         save_reminders(reminders)
         
         # ✅ ИНТЕГРАЦИЯ С GOOGLE SHEETS
-        if SHEETS_AVAILABLE and sheets_manager:
+        if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
             try:
                 chat_id = update.effective_chat.id
                 chat = update.effective_chat
@@ -608,9 +624,14 @@ def receive_weekly_text(update: Update, context: CallbackContext):
                 # Обновляем количество напоминаний для чата
                 sheets_manager.update_reminders_count(chat_id)
                 
-                logger.info(f"📊 Synced weekly reminder #{new_id} to Google Sheets")
+                logger.info(f"📊 Successfully synced weekly reminder #{new_id} to Google Sheets")
             except Exception as e:
                 logger.error(f"❌ Error syncing weekly reminder to Google Sheets: {e}")
+        elif SHEETS_AVAILABLE and sheets_manager and not sheets_manager.is_initialized:
+            logger.warning(f"📵 Google Sheets not initialized - weekly reminder #{new_id} not synced")
+            logger.warning("   Check GOOGLE_SHEETS_ID and GOOGLE_SHEETS_CREDENTIALS environment variables")
+        else:
+            logger.warning("📵 Google Sheets not available for weekly reminder sync")
         
         # Планируем напоминание
         schedule_reminder(context.dispatcher.job_queue, reminders[-1])
@@ -947,7 +968,7 @@ def send_reminder(context: CallbackContext):
         reminder_id = reminder.get('id', 'unknown')
         
         # 📊 Логируем начало отправки в Google Sheets
-        if SHEETS_AVAILABLE and sheets_manager:
+        if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
             try:
                 sheets_manager.log_send_history(
                     utc_time=utc_time,
@@ -961,6 +982,8 @@ def send_reminder(context: CallbackContext):
                 logger.info(f"📊 Logged reminder sending start for #{reminder_id} in Google Sheets")
             except Exception as e:
                 logger.error(f"❌ Error logging send start to Google Sheets: {e}")
+        elif SHEETS_AVAILABLE and sheets_manager and not sheets_manager.is_initialized:
+            logger.warning(f"📵 Google Sheets not initialized - reminder #{reminder_id} sending start not logged")
         
         # Отправляем каждому чату
         total_sent = 0
@@ -995,7 +1018,7 @@ def send_reminder(context: CallbackContext):
                     total_failed += 1
             
             # 📊 Логируем каждую отправку в Google Sheets
-            if SHEETS_AVAILABLE and sheets_manager:
+            if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
                 try:
                     sheets_manager.log_send_history(
                         utc_time=utc_time,
@@ -1010,7 +1033,7 @@ def send_reminder(context: CallbackContext):
                     logger.error(f"❌ Error logging send to Google Sheets for chat {cid}: {e}")
         
         # 📊 Итоговый лог в Google Sheets
-        if SHEETS_AVAILABLE and sheets_manager:
+        if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
             try:
                 final_status = "COMPLETED" if total_failed == 0 else f"PARTIAL ({total_sent}/{total_sent + total_failed})"
                 sheets_manager.log_send_history(
@@ -1025,6 +1048,8 @@ def send_reminder(context: CallbackContext):
                 logger.info(f"📊 Logged final summary for reminder #{reminder_id}: {total_sent} sent, {total_failed} failed")
             except Exception as e:
                 logger.error(f"❌ Error logging final summary to Google Sheets: {e}")
+        elif SHEETS_AVAILABLE and sheets_manager and not sheets_manager.is_initialized:
+            logger.warning(f"📵 Google Sheets not initialized - final summary for reminder #{reminder_id} not logged")
         
         logger.info(f"📈 Reminder #{reminder_id} delivery summary: {total_sent} sent, {total_failed} failed")
         
@@ -1036,18 +1061,20 @@ def send_reminder(context: CallbackContext):
             logger.info(f"🗑️ One-time reminder #{reminder_id} removed after sending")
             
             # 📊 Логируем удаление в Google Sheets
-            if SHEETS_AVAILABLE and sheets_manager:
+            if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
                 try:
                     sheets_manager.sync_reminder(reminder, "DELETE")
-                    logger.info(f"📊 Synced reminder #{reminder_id} deletion to Google Sheets")
+                    logger.info(f"📊 Successfully synced reminder #{reminder_id} deletion to Google Sheets")
                 except Exception as e:
                     logger.error(f"❌ Error syncing reminder deletion to Google Sheets: {e}")
+            elif SHEETS_AVAILABLE and sheets_manager and not sheets_manager.is_initialized:
+                logger.warning(f"📵 Google Sheets not initialized - reminder #{reminder_id} deletion not synced")
             
     except Exception as e:
         logger.error(f"❌ Critical error in send_reminder: {e}")
         
         # 📊 Логируем критическую ошибку в Google Sheets
-        if SHEETS_AVAILABLE and sheets_manager:
+        if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
             try:
                 utc_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
                 moscow_time = get_moscow_time().strftime("%H:%M MSK")
