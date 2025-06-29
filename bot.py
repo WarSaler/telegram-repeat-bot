@@ -859,6 +859,88 @@ def confirm_delete_reminder(update: Update, context: CallbackContext):
 # --- Очистка всех напоминаний ---
 def clear_reminders(update: Update, context: CallbackContext):
     try:
+        # Получаем все текущие напоминания перед удалением для синхронизации
+        all_reminders = load_reminders()
+        reminders_count = len(all_reminders)
+        
+        # ✅ СИНХРОНИЗАЦИЯ С GOOGLE SHEETS ПРИ МАССОВОМ УДАЛЕНИИ
+        if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized and all_reminders:
+            try:
+                chat_id = update.effective_chat.id
+                chat = update.effective_chat
+                chat_name = chat.title if chat.title else f"@{chat.username}" if chat.username else str(chat.first_name or "Private")
+                username = update.effective_user.username or update.effective_user.first_name or "Unknown"
+                
+                # Отправляем сообщение о начале операции
+                try:
+                    progress_message = update.message.reply_text(
+                        f"🔄 <b>Удаление всех напоминаний...</b>\n\n"
+                        f"📊 Обновление Google Sheets для {reminders_count} напоминаний...",
+                        parse_mode=ParseMode.HTML
+                    )
+                except:
+                    progress_message = update.message.reply_text(f"🔄 Удаление {reminders_count} напоминаний...")
+                
+                # Логируем начало массового удаления
+                sheets_manager.log_reminder_action("CLEAR_ALL", update.effective_user.id, username, chat_id, f"Started mass deletion of {reminders_count} reminders", "")
+                
+                # Синхронизируем каждое напоминание - устанавливаем статус "Deleted"
+                synced_count = 0
+                for reminder in all_reminders:
+                    try:
+                        reminder_data = {
+                            "id": reminder.get('id'),
+                            "text": reminder.get('text', ''),
+                            "time": reminder.get('datetime') or reminder.get('time', ''),
+                            "type": reminder.get('type', ''),
+                            "chat_id": chat_id,
+                            "chat_name": chat_name,
+                            "created_at": reminder.get('created_at', ''),
+                            "username": reminder.get('username', username),
+                            "last_sent": reminder.get('last_sent', ''),
+                            "days_of_week": reminder.get('day', '') if reminder.get('type') == 'weekly' else reminder.get('days_of_week', '')
+                        }
+                        
+                        # ВАЖНО: Используем действие "DELETE" для установки статуса "Deleted"
+                        sheets_manager.sync_reminder(reminder_data, "DELETE")
+                        synced_count += 1
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Error syncing reminder #{reminder.get('id')} deletion: {e}")
+                        # Продолжаем даже если одно напоминание не синхронизировалось
+                
+                # Обновляем количество напоминаний для чата (должно стать 0)
+                sheets_manager.update_reminders_count(chat_id)
+                
+                # Финальное логирование
+                sheets_manager.log_reminder_action("CLEAR_ALL_COMPLETE", update.effective_user.id, username, chat_id, f"Completed mass deletion. Synced: {synced_count}/{reminders_count}", "")
+                
+                logger.info(f"📊 Successfully synced {synced_count}/{reminders_count} reminders deletion to Google Sheets (status: Deleted)")
+                
+                # Обновляем сообщение о прогрессе
+                try:
+                    context.bot.edit_message_text(
+                        chat_id=progress_message.chat_id,
+                        message_id=progress_message.message_id,
+                        text=f"🔄 <b>Завершение удаления...</b>\n\n"
+                             f"✅ Google Sheets обновлен ({synced_count}/{reminders_count})",
+                        parse_mode=ParseMode.HTML
+                    )
+                except:
+                    pass
+                
+            except Exception as e:
+                logger.error(f"❌ Error syncing mass deletion to Google Sheets: {e}")
+                # Продолжаем удаление даже если синхронизация не удалась
+        elif SHEETS_AVAILABLE and sheets_manager and not sheets_manager.is_initialized:
+            logger.warning(f"📵 Google Sheets not initialized - mass deletion of {reminders_count} reminders not synced")
+            logger.warning("   Check GOOGLE_SHEETS_ID and GOOGLE_SHEETS_CREDENTIALS environment variables")
+        elif not all_reminders:
+            logger.info("📭 No reminders to delete")
+        else:
+            logger.warning("📵 Google Sheets not available for mass deletion sync")
+        
+        # Удаляем все напоминания из локального файла
         save_reminders([])
         
         # Останавливаем все задания
@@ -868,10 +950,31 @@ def clear_reminders(update: Update, context: CallbackContext):
             if hasattr(job, 'name') and job.name and job.name.startswith('reminder_'):
                 job.schedule_removal()
         
-        try:
-            update.message.reply_text("🗑 <b>Все напоминания удалены</b>", parse_mode=ParseMode.HTML)
-        except:
-            update.message.reply_text("🗑 Все напоминания удалены")
+        # Финальное сообщение пользователю
+        if reminders_count > 0:
+            try:
+                # Если есть progress_message, обновляем его
+                if 'progress_message' in locals():
+                    context.bot.edit_message_text(
+                        chat_id=progress_message.chat_id,
+                        message_id=progress_message.message_id,
+                        text=f"🗑 <b>Все напоминания удалены ({reminders_count})</b>\n"
+                             f"<i>Статус в Google Sheets изменен на Deleted</i>",
+                        parse_mode=ParseMode.HTML
+                    )
+                else:
+                    update.message.reply_text(
+                        f"🗑 <b>Все напоминания удалены ({reminders_count})</b>\n"
+                        f"<i>Статус в Google Sheets изменен на Deleted</i>", 
+                        parse_mode=ParseMode.HTML
+                    )
+            except:
+                update.message.reply_text(f"🗑 Все напоминания удалены ({reminders_count})")
+        else:
+            try:
+                update.message.reply_text("📭 <b>Напоминаний для удаления не найдено</b>", parse_mode=ParseMode.HTML)
+            except:
+                update.message.reply_text("📭 Напоминаний для удаления не найдено")
             
     except Exception as e:
         logger.error(f"Error in clear_reminders: {e}")
