@@ -102,7 +102,6 @@ def subscribe_chat(chat_id, chat_name="Unknown", chat_type="private", members_co
                 logger.error(f"❌ Error updating chat stats in Google Sheets: {e}")
         else:
             logger.warning("📵 Google Sheets not available for chat stats update")
-
 def save_chats(chats):
     with open("subscribed_chats.json", "w") as f:
         json.dump(chats, f)
@@ -157,7 +156,6 @@ def start(update: Update, context: CallbackContext):
         chat_id = update.effective_chat.id
         moscow_time = get_moscow_time().strftime("%H:%M MSK")
         logger.info(f"Received /start from chat {chat_id} at {moscow_time}")
-        
         # Получаем информацию о чате
         chat = update.effective_chat
         chat_name = chat.title if chat.title else f"@{chat.username}" if chat.username else str(chat.first_name or "Private")
@@ -189,7 +187,6 @@ def test(update: Update, context: CallbackContext):
         chat_id = update.effective_chat.id
         moscow_time = get_moscow_time().strftime("%H:%M MSK")
         logger.info(f"Received /test from chat {chat_id} at {moscow_time}")
-        
         # Получаем информацию о чате
         chat = update.effective_chat
         chat_name = chat.title if chat.title else f"@{chat.username}" if chat.username else str(chat.first_name or "Private")
@@ -325,37 +322,6 @@ def receive_reminder_text(update: Update, context: CallbackContext):
         })
         save_reminders(reminders)
         
-        # ✅ ИНТЕГРАЦИЯ С GOOGLE SHEETS
-        if SHEETS_AVAILABLE and sheets_manager:
-            try:
-                chat_id = update.effective_chat.id
-                chat = update.effective_chat
-                chat_name = chat.title if chat.title else f"@{chat.username}" if chat.username else str(chat.first_name or "Private")
-                username = update.effective_user.username or update.effective_user.first_name or "Unknown"
-                
-                # Логируем действие
-                sheets_manager.log_reminder_action("CREATE", update.effective_user.id, username, chat_id, f"Created reminder: {reminder_text[:50]}...", new_id)
-                
-                # Синхронизируем напоминание
-                reminder_data = {
-                    "id": new_id,
-                    "text": reminder_text,
-                    "time": context.user_data["reminder_datetime"],
-                    "type": "once",
-                    "chat_id": chat_id,
-                    "chat_name": chat_name,
-                    "created_at": get_moscow_time().strftime("%Y-%m-%d %H:%M:%S"),
-                    "username": username
-                }
-                sheets_manager.sync_reminder(reminder_data, "CREATE")
-                
-                # Обновляем количество напоминаний для чата
-                sheets_manager.update_reminders_count(chat_id)
-                
-                logger.info(f"📊 Synced reminder #{new_id} to Google Sheets")
-            except Exception as e:
-                logger.error(f"❌ Error syncing reminder to Google Sheets: {e}")
-        
         # Планируем напоминание
         schedule_reminder(context.dispatcher.job_queue, reminders[-1])
         
@@ -417,37 +383,6 @@ def receive_daily_text(update: Update, context: CallbackContext):
             "text": reminder_text
         })
         save_reminders(reminders)
-        
-        # ✅ ИНТЕГРАЦИЯ С GOOGLE SHEETS
-        if SHEETS_AVAILABLE and sheets_manager:
-            try:
-                chat_id = update.effective_chat.id
-                chat = update.effective_chat
-                chat_name = chat.title if chat.title else f"@{chat.username}" if chat.username else str(chat.first_name or "Private")
-                username = update.effective_user.username or update.effective_user.first_name or "Unknown"
-                
-                # Логируем действие
-                sheets_manager.log_reminder_action("CREATE", update.effective_user.id, username, chat_id, f"Created daily reminder: {reminder_text[:50]}...", new_id)
-                
-                # Синхронизируем напоминание
-                reminder_data = {
-                    "id": new_id,
-                    "text": reminder_text,
-                    "time": context.user_data["daily_time"],
-                    "type": "daily",
-                    "chat_id": chat_id,
-                    "chat_name": chat_name,
-                    "created_at": get_moscow_time().strftime("%Y-%m-%d %H:%M:%S"),
-                    "username": username
-                }
-                sheets_manager.sync_reminder(reminder_data, "CREATE")
-                
-                # Обновляем количество напоминаний для чата
-                sheets_manager.update_reminders_count(chat_id)
-                
-                logger.info(f"📊 Synced daily reminder #{new_id} to Google Sheets")
-            except Exception as e:
-                logger.error(f"❌ Error syncing daily reminder to Google Sheets: {e}")
         
         # Планируем напоминание
         schedule_reminder(context.dispatcher.job_queue, reminders[-1])
@@ -527,38 +462,6 @@ def receive_weekly_text(update: Update, context: CallbackContext):
             "text": reminder_text
         })
         save_reminders(reminders)
-        
-        # ✅ ИНТЕГРАЦИЯ С GOOGLE SHEETS
-        if SHEETS_AVAILABLE and sheets_manager:
-            try:
-                chat_id = update.effective_chat.id
-                chat = update.effective_chat
-                chat_name = chat.title if chat.title else f"@{chat.username}" if chat.username else str(chat.first_name or "Private")
-                username = update.effective_user.username or update.effective_user.first_name or "Unknown"
-                
-                # Логируем действие
-                sheets_manager.log_reminder_action("CREATE", update.effective_user.id, username, chat_id, f"Created weekly reminder: {reminder_text[:50]}...", new_id)
-                
-                # Синхронизируем напоминание
-                reminder_data = {
-                    "id": new_id,
-                    "text": reminder_text,
-                    "time": f"{context.user_data['weekly_day']} {context.user_data['weekly_time']}",
-                    "type": "weekly",
-                    "chat_id": chat_id,
-                    "chat_name": chat_name,
-                    "created_at": get_moscow_time().strftime("%Y-%m-%d %H:%M:%S"),
-                    "username": username,
-                    "days_of_week": context.user_data["weekly_day"]
-                }
-                sheets_manager.sync_reminder(reminder_data, "CREATE")
-                
-                # Обновляем количество напоминаний для чата
-                sheets_manager.update_reminders_count(chat_id)
-                
-                logger.info(f"📊 Synced weekly reminder #{new_id} to Google Sheets")
-            except Exception as e:
-                logger.error(f"❌ Error syncing weekly reminder to Google Sheets: {e}")
         
         # Планируем напоминание
         schedule_reminder(context.dispatcher.job_queue, reminders[-1])
@@ -867,7 +770,6 @@ def send_reminder(context: CallbackContext):
     """
     try:
         reminder = context.job.context
-        
         # Пытаемся загрузить чаты с автовосстановлением
         try:
             with open("subscribed_chats.json", "r") as f:
@@ -887,8 +789,7 @@ def send_reminder(context: CallbackContext):
                     return
             else:
                 logger.error("❌ Emergency restore failed, no reminders will be sent")
-                return
-        
+                return        
         moscow_time = get_moscow_time().strftime("%H:%M MSK")
         reminder_text = f"🔔 <b>НАПОМИНАНИЕ</b> <i>({moscow_time})</i>\n\n{reminder.get('text', '')}"
         
@@ -994,10 +895,6 @@ def reschedule_all_reminders(job_queue):
             if hasattr(job, 'name') and job.name and job.name.startswith('reminder_'):
                 job.schedule_removal()
         
-        # Планируем заново
-        schedule_all_reminders(job_queue)
-    except Exception as e:
-        logger.error(f"Error rescheduling reminders: {e}")
 
 # --- Функции автовосстановления подписок ---
 
