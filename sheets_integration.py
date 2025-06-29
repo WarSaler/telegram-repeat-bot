@@ -321,5 +321,106 @@ class SheetsManager:
         except Exception as e:
             logger.error(f"Error backing up reminders: {e}")
 
+    def get_subscribed_chats(self):
+        """Получение списка подписанных чатов из Google Sheets"""
+        if not self.is_initialized:
+            return []
+        
+        try:
+            worksheet = self.spreadsheet.worksheet('Chat_Stats')
+            records = worksheet.get_all_records()
+            
+            # Возвращаем список всех Chat_ID из таблицы
+            chat_ids = []
+            for record in records:
+                try:
+                    chat_id = int(record.get('Chat_ID'))
+                    if chat_id:  # Исключаем 0 и пустые значения
+                        chat_ids.append(chat_id)
+                except (ValueError, TypeError):
+                    continue
+            
+            logger.info(f"🔄 Retrieved {len(chat_ids)} subscribed chats from Google Sheets")
+            return chat_ids
+            
+        except Exception as e:
+            logger.error(f"Error retrieving subscribed chats from Google Sheets: {e}")
+            return []
+    
+    def restore_subscribed_chats_file(self, target_file="subscribed_chats.json"):
+        """Восстановление файла subscribed_chats.json из Google Sheets"""
+        if not self.is_initialized:
+            logger.warning("Google Sheets not available for chat restoration")
+            return False
+        
+        try:
+            # Получаем чаты из Google Sheets
+            chat_ids = self.get_subscribed_chats()
+            
+            if not chat_ids:
+                logger.warning("No chats found in Google Sheets for restoration")
+                return False
+            
+            # Записываем в локальный файл
+            with open(target_file, "w") as f:
+                json.dump(chat_ids, f)
+            
+            logger.info(f"✅ Successfully restored {len(chat_ids)} chats to {target_file}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error restoring subscribed chats file: {e}")
+            return False
+    
+    def sync_subscribed_chats_from_sheets(self, target_file="subscribed_chats.json"):
+        """Синхронизация subscribed_chats.json с Google Sheets (безопасное обновление)"""
+        if not self.is_initialized:
+            return False
+        
+        try:
+            # Получаем текущие чаты из локального файла
+            current_chats = []
+            try:
+                with open(target_file, "r") as f:
+                    current_chats = json.load(f)
+                    if not isinstance(current_chats, list):
+                        current_chats = []
+            except (FileNotFoundError, json.JSONDecodeError):
+                current_chats = []
+            
+            # Получаем чаты из Google Sheets
+            sheets_chats = self.get_subscribed_chats()
+            
+            if not sheets_chats:
+                logger.warning("No chats in Google Sheets, keeping current local file")
+                return True
+            
+            # Сравниваем и обновляем только если есть изменения
+            current_set = set(current_chats)
+            sheets_set = set(sheets_chats)
+            
+            if current_set != sheets_set:
+                # Есть изменения - обновляем файл
+                with open(target_file, "w") as f:
+                    json.dump(sheets_chats, f)
+                
+                added = sheets_set - current_set
+                removed = current_set - sheets_set
+                
+                logger.info(f"🔄 Synced subscribed chats: +{len(added)} -{len(removed)} (total: {len(sheets_chats)})")
+                if added:
+                    logger.info(f"  Added chats: {list(added)}")
+                if removed:
+                    logger.info(f"  Removed chats: {list(removed)}")
+            else:
+                logger.info(f"✅ Subscribed chats already in sync ({len(sheets_chats)} chats)")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error syncing subscribed chats: {e}")
+            return False
+
+
 # Глобальный экземпляр
 sheets_manager = SheetsManager() 

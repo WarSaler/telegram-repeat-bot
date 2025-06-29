@@ -739,9 +739,26 @@ def send_reminder(context: CallbackContext):
     """
     try:
         reminder = context.job.context
-        with open("subscribed_chats.json", "r") as f:
-            chats = json.load(f)
-        
+        # Пытаемся загрузить чаты с автовосстановлением
+        try:
+            with open("subscribed_chats.json", "r") as f:
+                chats = json.load(f)
+                if not chats or len(chats) == 0:
+                    raise ValueError("Empty chats list")
+        except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
+            logger.warning(f"⚠️ Problem with subscribed_chats.json: {e}")
+            logger.info("🔧 Attempting emergency restore...")
+            if ensure_subscribed_chats_file():
+                try:
+                    with open("subscribed_chats.json", "r") as f:
+                        chats = json.load(f)
+                    logger.info(f"✅ Emergency restore successful, loaded {len(chats)} chats")
+                except:
+                    logger.error("❌ Emergency restore failed, no reminders will be sent")
+                    return
+            else:
+                logger.error("❌ Emergency restore failed, no reminders will be sent")
+                return        
         moscow_time = get_moscow_time().strftime("%H:%M MSK")
         reminder_text = f"🔔 <b>НАПОМИНАНИЕ</b> <i>({moscow_time})</i>\n\n{reminder.get('text', '')}"
         
@@ -919,6 +936,10 @@ def main():
         dp.add_handler(CommandHandler("next", next_notification))
 
         # Добавляем обработчик ошибок
+        # ✅ ПРОВЕРЯЕМ И ВОССТАНАВЛИВАЕМ ПОДПИСКИ ПРИ ЗАПУСКЕ
+        logger.info("🔧 Checking subscribed_chats.json...")
+        ensure_subscribed_chats_file()
+        
         dp.add_error_handler(error_handler)
 
         # Запланировать все сохранённые напоминания
@@ -926,7 +947,10 @@ def main():
         
         # Добавляем ping каждые 5 минут для предотвращения засыпания на Render
         updater.job_queue.run_repeating(ping_self, interval=300, first=30)
-
+        
+        # ✅ АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ ПОДПИСОК КАЖДЫЙ ЧАС
+        updater.job_queue.run_repeating(auto_sync_subscribed_chats, interval=3600, first=300)  # Каждый час, первый через 5 мин
+        logger.info("🔄 Scheduled hourly subscribed chats sync")
         # Health check server for Render free tier
         threading.Thread(target=start_health_server, daemon=True).start()
         
@@ -942,3 +966,73 @@ def main():
 if __name__ == "__main__":
     main()
 
+# --- Функции автовосстановления подписок ---
+
+def ensure_subscribed_chats_file():
+    """Проверяет и восстанавливает subscribed_chats.json при необходимости"""
+    try:
+        # Проверяем существует ли файл и не пустой ли он
+        with open("subscribed_chats.json", "r") as f:
+            chats = json.load(f)
+            if chats and len(chats) > 0:
+                logger.info(f"✅ Found {len(chats)} existing subscribed chats")
+                return True  # Файл в порядке
+    except (FileNotFoundError, json.JSONDecodeError, TypeError):
+        pass  # Файл отсутствует или поврежден
+    
+    # Пытаемся восстановить из Google Sheets
+    logger.warning("⚠️ subscribed_chats.json is missing or empty. Attempting restore from Google Sheets...")
+    
+    if SHEETS_AVAILABLE and sheets_manager:
+        if sheets_manager.restore_subscribed_chats_file():
+            logger.info("✅ Successfully restored subscribed chats from Google Sheets")
+            return True
+        else:
+            logger.error("❌ Failed to restore from Google Sheets")
+    
+    # Создаем пустой файл как fallback
+    logger.warning("📝 Creating empty subscribed_chats.json as fallback")
+    with open("subscribed_chats.json", "w") as f:
+        json.dump([], f)
+    
+    return False
+
+def auto_sync_subscribed_chats(context: CallbackContext):
+    """Автоматическая синхронизация subscribed_chats.json с Google Sheets каждый час"""
+    try:
+        moscow_time = get_moscow_time().strftime("%H:%M MSK")
+        logger.info(f"🔄 Starting hourly sync at {moscow_time}")
+        
+        if SHEETS_AVAILABLE and sheets_manager:
+            success = sheets_manager.sync_subscribed_chats_from_sheets()
+            if success:
+                logger.info(f"✅ Hourly sync completed successfully at {moscow_time}")
+            else:
+                logger.warning(f"⚠️ Hourly sync had issues at {moscow_time}")
+        else:
+            logger.warning(f"📵 Google Sheets not available for sync at {moscow_time}")
+            
+    except Exception as e:
+        logger.error(f"❌ Error in hourly sync: {e}")
+
+def emergency_restore_subscribed_chats(context: CallbackContext):
+    """Экстренное восстановление при критической ошибке отправки"""
+    try:
+        logger.warning("🚨 Emergency restore triggered - checking subscribed_chats.json")
+        
+        # Проверяем текущий файл
+        try:
+            with open("subscribed_chats.json", "r") as f:
+                chats = json.load(f)
+                if chats and len(chats) > 0:
+                    logger.info(f"📋 Current file contains {len(chats)} chats - no restore needed")
+                    return
+        except:
+            pass
+        
+        # Файл поврежден или пуст - восстанавливаем
+        logger.warning("🔧 Attempting emergency restore from Google Sheets")
+        ensure_subscribed_chats_file()
+        
+    except Exception as e:
+        logger.error(f"❌ Error in emergency restore: {e}")
