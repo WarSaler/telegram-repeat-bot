@@ -353,6 +353,145 @@ class SheetsManager:
         except Exception as e:
             logger.error(f"Error backing up reminders: {e}")
 
+    def restore_reminders_from_sheets(self, target_file="reminders.json"):
+        """Восстановление активных напоминаний из Google Sheets"""
+        if not self.is_initialized:
+            logger.warning("Google Sheets not available for reminders restoration")
+            return False, "Google Sheets не инициализирован"
+        
+        try:
+            worksheet = self.spreadsheet.worksheet('Reminders')
+            
+            # Безопасно получаем записи
+            try:
+                records = worksheet.get_all_records()
+            except Exception as e:
+                logger.warning(f"Could not get records from Reminders, sheet may be empty: {e}")
+                return False, "Не удалось получить данные из Google Sheets (лист может быть пустым)"
+            
+            if not records:
+                logger.warning("No records found in Reminders sheet")
+                return False, "В листе Reminders нет записей"
+            
+            # Фильтруем только активные напоминания
+            active_reminders = []
+            for record in records:
+                try:
+                    # Проверяем статус
+                    status = record.get('Status', '').strip()
+                    if status.lower() != 'active':
+                        logger.debug(f"Skipping reminder {record.get('ID')} with status: {status}")
+                        continue
+                    
+                    # Конвертируем в формат бота
+                    reminder_type = record.get('Type', '').strip().lower()
+                    
+                    if reminder_type == 'once':
+                        # Разовое напоминание
+                        restored_reminder = {
+                            "id": str(record.get('ID', '')),
+                            "type": "once",
+                            "datetime": record.get('Time_MSK', ''),
+                            "text": record.get('Text', ''),
+                            "chat_id": record.get('Chat_ID', ''),
+                            "chat_name": record.get('Chat_Name', ''),
+                            "created_at": record.get('Created_At', ''),
+                            "username": record.get('Username', ''),
+                            "last_sent": record.get('Last_Sent', '')
+                        }
+                        
+                    elif reminder_type == 'daily':
+                        # Ежедневное напоминание
+                        restored_reminder = {
+                            "id": str(record.get('ID', '')),
+                            "type": "daily",
+                            "time": record.get('Time_MSK', ''),
+                            "text": record.get('Text', ''),
+                            "chat_id": record.get('Chat_ID', ''),
+                            "chat_name": record.get('Chat_Name', ''),
+                            "created_at": record.get('Created_At', ''),
+                            "username": record.get('Username', ''),
+                            "last_sent": record.get('Last_Sent', '')
+                        }
+                        
+                    elif reminder_type == 'weekly':
+                        # Еженедельное напоминание
+                        days_of_week = record.get('Days_Of_Week', '').strip()
+                        time_parts = record.get('Time_MSK', '').strip().split()
+                        
+                        if len(time_parts) >= 2:
+                            # Формат: "понедельник 10:00"
+                            day_name = time_parts[0].lower()
+                            time_str = time_parts[1]
+                        else:
+                            # Используем Days_Of_Week и Time_MSK отдельно
+                            day_name = days_of_week.lower() if days_of_week else 'понедельник'
+                            time_str = record.get('Time_MSK', '10:00')
+                        
+                        restored_reminder = {
+                            "id": str(record.get('ID', '')),
+                            "type": "weekly",
+                            "day": day_name,
+                            "time": time_str,
+                            "text": record.get('Text', ''),
+                            "chat_id": record.get('Chat_ID', ''),
+                            "chat_name": record.get('Chat_Name', ''),
+                            "created_at": record.get('Created_At', ''),
+                            "username": record.get('Username', ''),
+                            "last_sent": record.get('Last_Sent', ''),
+                            "days_of_week": day_name
+                        }
+                        
+                    else:
+                        logger.warning(f"Unknown reminder type: {reminder_type} for ID {record.get('ID')}")
+                        continue
+                    
+                    # Валидация обязательных полей
+                    if not restored_reminder.get('id') or not restored_reminder.get('text'):
+                        logger.warning(f"Invalid reminder data: ID={restored_reminder.get('id')}, Text={restored_reminder.get('text')}")
+                        continue
+                    
+                    active_reminders.append(restored_reminder)
+                    logger.debug(f"Restored reminder: {restored_reminder['id']} ({restored_reminder['type']})")
+                    
+                except Exception as e:
+                    logger.error(f"Error processing reminder record: {e}")
+                    continue
+            
+            if not active_reminders:
+                logger.warning("No active reminders found in Google Sheets")
+                return False, "В Google Sheets не найдено активных напоминаний"
+            
+            # Сохраняем восстановленные напоминания
+            try:
+                import json
+                with open(target_file, "w", encoding='utf-8') as f:
+                    json.dump(active_reminders, f, ensure_ascii=False, indent=2)
+                
+                logger.info(f"✅ Successfully restored {len(active_reminders)} active reminders from Google Sheets to {target_file}")
+                
+                # Логируем операцию восстановления
+                moscow_time = datetime.now(MOSCOW_TZ).strftime('%Y-%m-%d %H:%M:%S')
+                self.log_operation(
+                    timestamp=moscow_time,
+                    action="RESTORE_REMINDERS",
+                    user_id="SYSTEM",
+                    username="AutoRestore",
+                    chat_id=0,
+                    details=f"Restored {len(active_reminders)} active reminders from Google Sheets",
+                    reminder_id=""
+                )
+                
+                return True, f"Успешно восстановлено {len(active_reminders)} активных напоминаний"
+                
+            except Exception as e:
+                logger.error(f"Error saving restored reminders to {target_file}: {e}")
+                return False, f"Ошибка сохранения в файл: {e}"
+                
+        except Exception as e:
+            logger.error(f"Error restoring reminders from Google Sheets: {e}")
+            return False, f"Ошибка восстановления из Google Sheets: {e}"
+
     def get_subscribed_chats(self):
         """Получение списка подписанных чатов из Google Sheets"""
         if not self.is_initialized:

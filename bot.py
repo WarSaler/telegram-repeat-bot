@@ -826,6 +826,166 @@ def clear_reminders(update: Update, context: CallbackContext):
         logger.error(f"Error in clear_reminders: {e}")
         update.message.reply_text("❌ Ошибка при очистке напоминаний")
 
+# --- Восстановление напоминаний из Google Sheets ---
+def restore_reminders(update: Update, context: CallbackContext):
+    """Восстановление активных напоминаний из Google Sheets"""
+    try:
+        # Проверяем доступность Google Sheets
+        if not SHEETS_AVAILABLE or not sheets_manager:
+            try:
+                update.message.reply_text(
+                    "❌ <b>Google Sheets недоступен</b>\n\n"
+                    "📵 Интеграция с Google Sheets не настроена.\n"
+                    "Обратитесь к администратору для настройки.",
+                    parse_mode=ParseMode.HTML
+                )
+            except:
+                update.message.reply_text("❌ Google Sheets недоступен")
+            return
+        
+        if not sheets_manager.is_initialized:
+            try:
+                update.message.reply_text(
+                    "❌ <b>Google Sheets не инициализирован</b>\n\n"
+                    "🔧 Проверьте переменные окружения:\n"
+                    "• GOOGLE_SHEETS_ID\n"
+                    "• GOOGLE_SHEETS_CREDENTIALS",
+                    parse_mode=ParseMode.HTML
+                )
+            except:
+                update.message.reply_text("❌ Google Sheets не инициализирован")
+            return
+        
+        # Отправляем сообщение о начале восстановления
+        try:
+            progress_message = update.message.reply_text(
+                "🔄 <b>Восстановление напоминаний...</b>\n\n"
+                "📊 Получение данных из Google Sheets...",
+                parse_mode=ParseMode.HTML
+            )
+        except:
+            progress_message = update.message.reply_text("🔄 Восстановление напоминаний...")
+        
+        # Получаем информацию о пользователе для логирования
+        chat_id = update.effective_chat.id
+        user_id = update.effective_user.id
+        username = update.effective_user.username or update.effective_user.first_name or "Unknown"
+        
+        # Логируем начало операции восстановления
+        if sheets_manager.is_initialized:
+            try:
+                moscow_time = get_moscow_time().strftime("%Y-%m-%d %H:%M:%S")
+                sheets_manager.log_operation(
+                    timestamp=moscow_time,
+                    action="RESTORE_START",
+                    user_id=str(user_id),
+                    username=username,
+                    chat_id=chat_id,
+                    details="Manual restore reminders command initiated",
+                    reminder_id=""
+                )
+            except Exception as e:
+                logger.error(f"Error logging restore start: {e}")
+        
+        # Восстанавливаем напоминания
+        success, message = sheets_manager.restore_reminders_from_sheets()
+        
+        if success:
+            # Перепланируем все напоминания
+            reschedule_all_reminders(context.dispatcher.job_queue)
+            
+            # Получаем количество восстановленных напоминаний
+            try:
+                restored_reminders = load_reminders()
+                count = len(restored_reminders)
+                
+                # Подсчитываем по типам
+                once_count = sum(1 for r in restored_reminders if r.get('type') == 'once')
+                daily_count = sum(1 for r in restored_reminders if r.get('type') == 'daily')
+                weekly_count = sum(1 for r in restored_reminders if r.get('type') == 'weekly')
+                
+                try:
+                    context.bot.edit_message_text(
+                        chat_id=progress_message.chat_id,
+                        message_id=progress_message.message_id,
+                        text=f"✅ <b>Восстановление завершено успешно!</b>\n\n"
+                             f"📊 <b>Восстановлено напоминаний: {count}</b>\n"
+                             f"📅 Разовых: {once_count}\n"
+                             f"🔄 Ежедневных: {daily_count}\n"
+                             f"📆 Еженедельных: {weekly_count}\n\n"
+                             f"⏰ Все напоминания перепланированы и активны!\n"
+                             f"<i>Команда: /list_reminders для просмотра</i>",
+                        parse_mode=ParseMode.HTML
+                    )
+                except:
+                    update.message.reply_text(
+                        f"✅ Восстановление завершено успешно!\n\n"
+                        f"📊 Восстановлено напоминаний: {count}\n"
+                        f"📅 Разовых: {once_count}\n"
+                        f"🔄 Ежедневных: {daily_count}\n"
+                        f"📆 Еженедельных: {weekly_count}\n\n"
+                        f"⏰ Все напоминания перепланированы и активны!"
+                    )
+                
+                logger.info(f"✅ Successfully restored {count} reminders for user {username} (ID: {user_id})")
+                
+            except Exception as e:
+                logger.error(f"Error getting restored reminders count: {e}")
+                try:
+                    context.bot.edit_message_text(
+                        chat_id=progress_message.chat_id,
+                        message_id=progress_message.message_id,
+                        text=f"✅ <b>Восстановление завершено!</b>\n\n{message}",
+                        parse_mode=ParseMode.HTML
+                    )
+                except:
+                    update.message.reply_text(f"✅ Восстановление завершено!\n\n{message}")
+        
+        else:
+            # Ошибка восстановления
+            try:
+                context.bot.edit_message_text(
+                    chat_id=progress_message.chat_id,
+                    message_id=progress_message.message_id,
+                    text=f"❌ <b>Ошибка восстановления</b>\n\n{message}\n\n"
+                         f"💡 <i>Попробуйте:</i>\n"
+                         f"• Проверить доступ к Google Sheets\n"
+                         f"• Убедиться, что в листе есть активные напоминания\n"
+                         f"• Обратиться к администратору",
+                    parse_mode=ParseMode.HTML
+                )
+            except:
+                update.message.reply_text(f"❌ Ошибка восстановления\n\n{message}")
+            
+            logger.error(f"❌ Failed to restore reminders for user {username}: {message}")
+        
+        # Логируем завершение операции
+        if sheets_manager.is_initialized:
+            try:
+                moscow_time = get_moscow_time().strftime("%Y-%m-%d %H:%M:%S")
+                sheets_manager.log_operation(
+                    timestamp=moscow_time,
+                    action="RESTORE_COMPLETE",
+                    user_id=str(user_id),
+                    username=username,
+                    chat_id=chat_id,
+                    details=f"Manual restore {'successful' if success else 'failed'}: {message}",
+                    reminder_id=""
+                )
+            except Exception as e:
+                logger.error(f"Error logging restore completion: {e}")
+                
+    except Exception as e:
+        logger.error(f"Error in restore_reminders: {e}")
+        try:
+            update.message.reply_text(
+                "❌ <b>Критическая ошибка восстановления</b>\n\n"
+                "Обратитесь к администратору системы.",
+                parse_mode=ParseMode.HTML
+            )
+        except:
+            update.message.reply_text("❌ Критическая ошибка восстановления")
+
 # --- Следующее напоминание ---
 def next_notification(update: Update, context: CallbackContext):
     try:
@@ -1338,6 +1498,7 @@ def main():
         dp.add_handler(conv_del)
         
         dp.add_handler(CommandHandler("clear_reminders", clear_reminders))
+        dp.add_handler(CommandHandler("restore_reminders", restore_reminders))
         dp.add_handler(CommandHandler("next", next_notification))
 
         # Добавляем обработчик ошибок
