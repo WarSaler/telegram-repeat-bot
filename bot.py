@@ -90,9 +90,18 @@ def error_handler(update: Update, context: CallbackContext):
     Handle errors by logging them without crashing the bot.
     """
     if isinstance(context.error, Conflict):
-        logger.warning("Conflict error (multiple bot instances running)")
+        logger.warning("⚠️ Conflict error: Multiple bot instances detected")
+        logger.warning("   This usually means:")
+        logger.warning("   1. Another bot instance is running")
+        logger.warning("   2. Previous deployment is still active")
+        logger.warning("   3. Development and production bots conflict")
+        logger.warning("   Continuing to run, conflicts should resolve automatically...")
         return
-    logger.error("Uncaught exception:", exc_info=context.error)
+    elif isinstance(context.error, BadRequest):
+        logger.warning(f"⚠️ Bad request: {context.error}")
+        return
+    
+    logger.error("❌ Uncaught exception:", exc_info=context.error)
 
 def subscribe_chat(chat_id, chat_name="Unknown", chat_type="private", members_count=None):
     try:
@@ -1151,18 +1160,44 @@ def ensure_subscribed_chats_file():
     except (FileNotFoundError, json.JSONDecodeError, TypeError):
         pass  # Файл отсутствует или поврежден
     
-    # Пытаемся восстановить из Google Sheets
+    # Детальная диагностика доступности Google Sheets
     logger.warning("⚠️ subscribed_chats.json is missing or empty. Attempting restore from Google Sheets...")
+    logger.info(f"🔍 Google Sheets availability check:")
+    logger.info(f"   SHEETS_AVAILABLE: {SHEETS_AVAILABLE}")
+    logger.info(f"   sheets_manager exists: {sheets_manager is not None}")
     
-    if SHEETS_AVAILABLE and sheets_manager:
+    if sheets_manager:
+        logger.info(f"   sheets_manager.is_initialized: {sheets_manager.is_initialized}")
+        
+        # Проверяем переменные окружения
+        sheets_id = os.environ.get('GOOGLE_SHEETS_ID')
+        sheets_creds = os.environ.get('GOOGLE_SHEETS_CREDENTIALS')
+        logger.info(f"   GOOGLE_SHEETS_ID present: {bool(sheets_id)}")
+        logger.info(f"   GOOGLE_SHEETS_CREDENTIALS present: {bool(sheets_creds)}")
+        
+        if sheets_id:
+            logger.info(f"   Using Sheet ID: {sheets_id[:20]}...{sheets_id[-10:] if len(sheets_id) > 30 else sheets_id}")
+    
+    if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
         if sheets_manager.restore_subscribed_chats_file():
             logger.info("✅ Successfully restored subscribed chats from Google Sheets")
             return True
         else:
             logger.error("❌ Failed to restore from Google Sheets")
+    else:
+        logger.warning("📵 Google Sheets not available for restoration")
+        logger.warning("   This means:")
+        logger.warning("   1. Check GOOGLE_SHEETS_ID environment variable")
+        logger.warning("   2. Check GOOGLE_SHEETS_CREDENTIALS environment variable") 
+        logger.warning("   3. Verify Google Sheets API access")
     
-    # Создаем пустой файл как fallback
+    # Создаем пустой файл как fallback с подробным объяснением
     logger.warning("📝 Creating empty subscribed_chats.json as fallback")
+    logger.warning("⚠️  ВНИМАНИЕ: Бот не сможет отправлять напоминания без подписанных чатов!")
+    logger.warning("   Для работы бота нужно:")
+    logger.warning("   1. Запустить команду /start в Telegram чатах")
+    logger.warning("   2. Настроить Google Sheets интеграцию")
+    
     with open("subscribed_chats.json", "w") as f:
         json.dump([], f)
     

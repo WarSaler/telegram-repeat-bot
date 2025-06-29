@@ -123,6 +123,15 @@ BASE_URL=https://your-app-name.onrender.com
 - ✅ Автоматический ping каждые 5 минут
 - ✅ Защита от засыпания на Free tier
 
+### 🚨 Проблемы с деплоем?
+
+Если в логах видны ошибки:
+- `Google Sheets credentials or ID not found`
+- `subscribed_chats.json is missing or empty`
+- `Emergency restore failed, no reminders will be sent`
+
+**📋 Смотрите подробную инструкцию:** [`docs/RENDER_SETUP.md`](docs/RENDER_SETUP.md)
+
 ## 🛠️ Технические особенности
 
 ### Архитектура:
