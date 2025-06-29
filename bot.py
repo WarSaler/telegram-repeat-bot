@@ -548,6 +548,15 @@ def start_add_weekly_reminder(update: Update, context: CallbackContext):
         return WEEKLY_DAY
 
 def receive_weekly_day(update: Update, context: CallbackContext):
+    # ✅ ЗАЩИТА ОТ None - исправление AttributeError
+    if not update.message or not update.message.text:
+        try:
+            update.message.reply_text("❌ <b>Сообщение не получено</b>\n\nПожалуйста, введите день недели текстом:", parse_mode=ParseMode.HTML)
+        except:
+            if update.message:
+                update.message.reply_text("❌ Сообщение не получено. Введите день недели:")
+        return WEEKLY_DAY
+    
     text = update.message.text.strip().lower()
     days = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
     if text not in days:
@@ -780,13 +789,55 @@ def confirm_delete_reminder(update: Update, context: CallbackContext):
         reminders.sort(key=lambda x: int(x.get("id", "0")))
         reminder_to_delete = reminders[reminder_number - 1]
         
-        # Удаляем напоминание
+        # ✅ СИНХРОНИЗАЦИЯ С GOOGLE SHEETS ПРИ УДАЛЕНИИ
+        if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
+            try:
+                chat_id = update.effective_chat.id
+                chat = update.effective_chat
+                chat_name = chat.title if chat.title else f"@{chat.username}" if chat.username else str(chat.first_name or "Private")
+                username = update.effective_user.username or update.effective_user.first_name or "Unknown"
+                
+                # Логируем действие удаления
+                sheets_manager.log_reminder_action("DELETE", update.effective_user.id, username, chat_id, f"Deleted reminder: {reminder_to_delete.get('text', '')[:50]}...", reminder_to_delete.get('id'))
+                
+                # Синхронизируем удаление - устанавливаем статус "Deleted"
+                reminder_data = {
+                    "id": reminder_to_delete.get('id'),
+                    "text": reminder_to_delete.get('text', ''),
+                    "time": reminder_to_delete.get('datetime') or reminder_to_delete.get('time', ''),
+                    "type": reminder_to_delete.get('type', ''),
+                    "chat_id": chat_id,
+                    "chat_name": chat_name,
+                    "created_at": reminder_to_delete.get('created_at', ''),
+                    "username": reminder_to_delete.get('username', username),
+                    "last_sent": reminder_to_delete.get('last_sent', ''),
+                    "days_of_week": reminder_to_delete.get('day', '') if reminder_to_delete.get('type') == 'weekly' else reminder_to_delete.get('days_of_week', '')
+                }
+                
+                # ВАЖНО: Используем действие "DELETE" для установки статуса "Deleted"
+                sheets_manager.sync_reminder(reminder_data, "DELETE")
+                
+                # Обновляем количество напоминаний для чата
+                sheets_manager.update_reminders_count(chat_id)
+                
+                logger.info(f"📊 Successfully synced reminder #{reminder_to_delete.get('id')} deletion to Google Sheets (status: Deleted)")
+                
+            except Exception as e:
+                logger.error(f"❌ Error syncing reminder deletion to Google Sheets: {e}")
+                # Продолжаем удаление даже если синхронизация не удалась
+        elif SHEETS_AVAILABLE and sheets_manager and not sheets_manager.is_initialized:
+            logger.warning(f"📵 Google Sheets not initialized - reminder #{reminder_to_delete.get('id')} deletion not synced")
+            logger.warning("   Check GOOGLE_SHEETS_ID and GOOGLE_SHEETS_CREDENTIALS environment variables")
+        else:
+            logger.warning("📵 Google Sheets not available for reminder deletion sync")
+        
+        # Удаляем напоминание из локального файла
         all_reminders = load_reminders()
         new_list = [r for r in all_reminders if r["id"] != reminder_to_delete["id"]]
         save_reminders(new_list)
         
         try:
-            update.message.reply_text(f"✅ <b>Напоминание #{reminder_number} удалено</b>", parse_mode=ParseMode.HTML)
+            update.message.reply_text(f"✅ <b>Напоминание #{reminder_number} удалено</b>\n<i>Статус в Google Sheets изменен на Deleted</i>", parse_mode=ParseMode.HTML)
         except:
             update.message.reply_text(f"✅ Напоминание #{reminder_number} удалено")
         
