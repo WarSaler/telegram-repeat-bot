@@ -95,11 +95,19 @@ class SheetsManager:
                 else:
                     # Проверяем и обновляем заголовки существующего листа
                     worksheet = self.spreadsheet.worksheet(sheet_name)
-                    current_headers = worksheet.row_values(1)
-                    if current_headers != headers:
+                    try:
+                        current_headers = worksheet.row_values(1)
+                        # Если заголовки не совпадают или лист пустой
+                        if not current_headers or current_headers != headers:
+                            worksheet.clear()
+                            worksheet.append_row(headers)
+                            logger.info(f"Updated headers for sheet: {sheet_name}")
+                    except Exception as e:
+                        # Если не удается получить заголовки, очищаем и создаем заново
+                        logger.warning(f"Could not read headers for {sheet_name}, recreating: {e}")
                         worksheet.clear()
                         worksheet.append_row(headers)
-                        logger.info(f"Updated headers for sheet: {sheet_name}")
+                        logger.info(f"Recreated headers for sheet: {sheet_name}")
                         
         except Exception as e:
             logger.error(f"Error setting up sheets: {e}")
@@ -159,12 +167,17 @@ class SheetsManager:
                 # Добавляем новую запись
                 worksheet.append_row(row_data)
             elif action == 'UPDATE' or action == 'DELETE':
-                # Ищем существующую запись и обновляем
-                records = worksheet.get_all_records()
+                # Безопасно получаем записи
+                try:
+                    records = worksheet.get_all_records()
+                except Exception as e:
+                    logger.warning(f"Could not get records from Reminders, sheet may be empty: {e}")
+                    records = []
+                
                 row_to_update = None
                 
                 for i, record in enumerate(records):
-                    if str(record.get('ID')) == str(reminder.get('id')):
+                    if str(record.get('ID', '')) == str(reminder.get('id')):
                         row_to_update = i + 2  # +2 потому что индексы с 1 и есть заголовок
                         break
                 
@@ -216,15 +229,21 @@ class SheetsManager:
         
         try:
             worksheet = self.spreadsheet.worksheet('Chat_Stats')
-            records = worksheet.get_all_records()
+            
+            # Безопасно получаем записи
+            try:
+                records = worksheet.get_all_records()
+            except Exception as e:
+                logger.warning(f"Could not get records from Chat_Stats, sheet may be empty: {e}")
+                records = []
             
             # Ищем существующую запись
             row_to_update = None
             existing_record = None
             
             for i, record in enumerate(records):
-                if str(record.get('Chat_ID')) == str(chat_id):
-                    row_to_update = i + 2
+                if str(record.get('Chat_ID', '')) == str(chat_id):
+                    row_to_update = i + 2  # +2 для учета заголовка и индексации с 1
                     existing_record = record
                     break
             
@@ -237,6 +256,7 @@ class SheetsManager:
                 worksheet.update_cell(row_to_update, 5, now_msk)    # Last_Activity
                 if members_count is not None:
                     worksheet.update_cell(row_to_update, 6, members_count)  # Members_Count
+                logger.info(f"📊 Updated existing chat {chat_id} in Google Sheets")
             else:
                 # Создаем новую запись
                 row = [
@@ -249,8 +269,7 @@ class SheetsManager:
                     now_msk   # First_Seen
                 ]
                 worksheet.append_row(row)
-            
-            logger.info(f"Updated chat stats for {chat_id}")
+                logger.info(f"📊 Added new chat {chat_id} to Google Sheets")
             
         except Exception as e:
             logger.error(f"Error updating chat stats: {e}")
@@ -263,22 +282,35 @@ class SheetsManager:
         try:
             # Подсчитываем активные напоминания для чата
             reminders_sheet = self.spreadsheet.worksheet('Reminders')
-            reminders = reminders_sheet.get_all_records()
+            try:
+                reminders = reminders_sheet.get_all_records()
+            except Exception as e:
+                logger.warning(f"Could not get reminders, sheet may be empty: {e}")
+                reminders = []
             
             active_count = sum(1 for r in reminders 
-                             if str(r.get('Chat_ID')) == str(chat_id) 
+                             if str(r.get('Chat_ID', '')) == str(chat_id) 
                              and r.get('Status') == 'Active')
             
             # Обновляем статистику чата
             chat_stats_sheet = self.spreadsheet.worksheet('Chat_Stats')
-            records = chat_stats_sheet.get_all_records()
+            try:
+                records = chat_stats_sheet.get_all_records()
+            except Exception as e:
+                logger.warning(f"Could not get chat stats, sheet may be empty: {e}")
+                records = []
             
+            updated = False
             for i, record in enumerate(records):
-                if str(record.get('Chat_ID')) == str(chat_id):
+                if str(record.get('Chat_ID', '')) == str(chat_id):
                     chat_stats_sheet.update_cell(i + 2, 4, active_count)  # Reminders_Count
+                    updated = True
                     break
             
-            logger.info(f"Updated reminders count for chat {chat_id}: {active_count}")
+            if updated:
+                logger.info(f"📊 Updated reminders count for chat {chat_id}: {active_count}")
+            else:
+                logger.warning(f"⚠️ Chat {chat_id} not found in Chat_Stats for reminders count update")
             
         except Exception as e:
             logger.error(f"Error updating reminders count: {e}")
@@ -328,15 +360,23 @@ class SheetsManager:
         
         try:
             worksheet = self.spreadsheet.worksheet('Chat_Stats')
-            records = worksheet.get_all_records()
+            
+            # Безопасно получаем записи
+            try:
+                records = worksheet.get_all_records()
+            except Exception as e:
+                logger.warning(f"Could not get records from Chat_Stats, sheet may be empty: {e}")
+                return []
             
             # Возвращаем список всех Chat_ID из таблицы
             chat_ids = []
             for record in records:
                 try:
-                    chat_id = int(record.get('Chat_ID'))
-                    if chat_id:  # Исключаем 0 и пустые значения
-                        chat_ids.append(chat_id)
+                    chat_id_value = record.get('Chat_ID')
+                    if chat_id_value:
+                        chat_id = int(chat_id_value)
+                        if chat_id != 0:  # Исключаем 0 и пустые значения
+                            chat_ids.append(chat_id)
                 except (ValueError, TypeError):
                     continue
             
