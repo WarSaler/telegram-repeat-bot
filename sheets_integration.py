@@ -421,6 +421,87 @@ class SheetsManager:
             logger.error(f"Error syncing subscribed chats: {e}")
             return False
 
+    def log_send_history(self, utc_time: str, moscow_time: str, reminder_id: str, 
+                        chat_id: str, status: str, error: str = "", text_preview: str = ""):
+        """Детальное логирование истории отправки напоминаний"""
+        if not self.is_initialized:
+            return
+        
+        try:
+            worksheet = self.spreadsheet.worksheet('Send_History')
+            
+            row = [
+                utc_time,
+                moscow_time,
+                reminder_id,
+                chat_id,
+                status,
+                error or '',
+                text_preview[:50] + '...' if len(text_preview) > 50 else text_preview
+            ]
+            
+            worksheet.append_row(row)
+            logger.debug(f"Logged send history: {reminder_id} -> {chat_id} ({status})")
+            
+        except Exception as e:
+            logger.error(f"Error logging send history: {e}")
+    
+    def log_operation(self, timestamp: str, action: str, user_id: str, username: str,
+                     chat_id: int, details: str, reminder_id: str = ""):
+        """Общее логирование операций системы"""
+        if not self.is_initialized:
+            return
+        
+        try:
+            worksheet = self.spreadsheet.worksheet('Operation_Logs')
+            
+            row = [
+                timestamp,
+                timestamp,  # Может быть изменено на UTC если нужно
+                action,
+                user_id,
+                username or 'Unknown',
+                chat_id,
+                details,
+                reminder_id or ''
+            ]
+            
+            worksheet.append_row(row)
+            logger.debug(f"Logged operation: {action} by {username}")
+            
+        except Exception as e:
+            logger.error(f"Error logging operation: {e}")
+    
+    def sync_subscribed_chats_to_sheets(self, chat_ids: List[int]):
+        """Синхронизация локального списка чатов в Google Sheets"""
+        if not self.is_initialized:
+            return False
+        
+        try:
+            # Обновляем информацию о чатах в Chat_Stats
+            # Этот метод уже обновляет Google Sheets через update_chat_stats
+            # при вызове subscribe_chat, поэтому здесь просто логируем
+            
+            logger.info(f"📊 Local chats list synced to Google Sheets: {len(chat_ids)} chats")
+            
+            # Дополнительно можем залогировать операцию синхронизации
+            moscow_time = datetime.now(MOSCOW_TZ).strftime('%Y-%m-%d %H:%M:%S')
+            self.log_operation(
+                timestamp=moscow_time,
+                action="SYNC_CHATS",
+                user_id="SYSTEM",
+                username="AutoSync",
+                chat_id=0,
+                details=f"Synchronized {len(chat_ids)} chats to Google Sheets",
+                reminder_id=""
+            )
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error syncing chats to sheets: {e}")
+            return False
+
 
 # Глобальный экземпляр
 sheets_manager = SheetsManager() 

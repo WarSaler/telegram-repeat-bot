@@ -14,6 +14,19 @@ from telegram.error import Conflict, BadRequest
 import html
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+# ✅ ИМПОРТ GOOGLE SHEETS ИНТЕГРАЦИИ
+try:
+    from sheets_integration import SheetsManager
+    sheets_manager = SheetsManager()
+    SHEETS_AVAILABLE = True
+    logger_temp = logging.getLogger(__name__)
+    logger_temp.info("✅ Google Sheets integration loaded successfully")
+except Exception as e:
+    sheets_manager = None
+    SHEETS_AVAILABLE = False
+    logger_temp = logging.getLogger(__name__)
+    logger_temp.warning(f"📵 Google Sheets integration not available: {e}")
+
 # Константа для московского времени
 MOSCOW_TZ = pytz.timezone('Europe/Moscow')
 
@@ -89,19 +102,49 @@ def subscribe_chat(chat_id, chat_name="Unknown", chat_type="private", members_co
     except (FileNotFoundError, json.JSONDecodeError):
         chats = []
 
-    if chat_id not in chats:
+    # Проверяем, является ли чат новым
+    is_new_chat = chat_id not in chats
+    
+    if is_new_chat:
         chats.append(chat_id)
         save_chats(chats)
+        logger.info(f"🆕 New chat subscribed: {chat_id} ({chat_name})")
         
-        # ✅ ДОБАВЛЯЕМ ИНТЕГРАЦИЮ С GOOGLE SHEETS
+        # ✅ МГНОВЕННАЯ ЗАПИСЬ В GOOGLE SHEETS
+        if SHEETS_AVAILABLE and sheets_manager:
+            try:
+                # Обновляем статистику чата
+                sheets_manager.update_chat_stats(chat_id, chat_name, chat_type, members_count)
+                
+                # Логируем действие подписки
+                moscow_time = get_moscow_time().strftime("%Y-%m-%d %H:%M:%S")
+                sheets_manager.log_operation(
+                    timestamp=moscow_time,
+                    action="CHAT_SUBSCRIBE",
+                    user_id="SYSTEM",
+                    username="AutoSubscribe",
+                    chat_id=chat_id,
+                    details=f"New chat subscribed: {chat_name} ({chat_type}), Members: {members_count or 'N/A'}",
+                    reminder_id=""
+                )
+                
+                # Обновляем список подписанных чатов в Google Sheets
+                sheets_manager.sync_subscribed_chats_to_sheets(chats)
+                
+                logger.info(f"📊 Instantly synced new chat {chat_id} to Google Sheets")
+                
+            except Exception as e:
+                logger.error(f"❌ Error syncing new chat to Google Sheets: {e}")
+        else:
+            logger.warning("📵 Google Sheets not available for new chat sync")
+    else:
+        # Если чат уже существует, обновляем его информацию
         if SHEETS_AVAILABLE and sheets_manager:
             try:
                 sheets_manager.update_chat_stats(chat_id, chat_name, chat_type, members_count)
-                logger.info(f"📊 Updated chat stats for {chat_id} in Google Sheets")
+                logger.info(f"📊 Updated existing chat {chat_id} info in Google Sheets")
             except Exception as e:
-                logger.error(f"❌ Error updating chat stats in Google Sheets: {e}")
-        else:
-            logger.warning("📵 Google Sheets not available for chat stats update")
+                logger.error(f"❌ Error updating chat info in Google Sheets: {e}")
 
 def save_chats(chats):
     with open("subscribed_chats.json", "w") as f:
@@ -890,31 +933,126 @@ def send_reminder(context: CallbackContext):
                 return
         
         moscow_time = get_moscow_time().strftime("%H:%M MSK")
+        utc_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         reminder_text = f"🔔 <b>НАПОМИНАНИЕ</b> <i>({moscow_time})</i>\n\n{reminder.get('text', '')}"
+        reminder_id = reminder.get('id', 'unknown')
+        
+        # 📊 Логируем начало отправки в Google Sheets
+        if SHEETS_AVAILABLE and sheets_manager:
+            try:
+                sheets_manager.log_send_history(
+                    utc_time=utc_time,
+                    moscow_time=moscow_time,
+                    reminder_id=reminder_id,
+                    chat_id="ALL",
+                    status="SENDING",
+                    error="",
+                    text_preview=reminder.get('text', '')[:50] + "..." if len(reminder.get('text', '')) > 50 else reminder.get('text', '')
+                )
+                logger.info(f"📊 Logged reminder sending start for #{reminder_id} in Google Sheets")
+            except Exception as e:
+                logger.error(f"❌ Error logging send start to Google Sheets: {e}")
+        
+        # Отправляем каждому чату
+        total_sent = 0
+        total_failed = 0
         
         for cid in chats:
+            delivery_status = "SUCCESS"
+            error_details = ""
+            
             try:
                 context.bot.send_message(chat_id=cid, text=reminder_text, parse_mode=ParseMode.HTML)
-                logger.info(f"Reminder sent to chat {cid} at {moscow_time}")
+                logger.info(f"✅ Reminder sent to chat {cid} at {moscow_time}")
+                total_sent += 1
+                
             except Exception as e:
-                logger.error(f"Failed to send reminder to chat {cid}: {e}")
+                logger.error(f"❌ Failed to send reminder to chat {cid}: {e}")
+                error_details = str(e)
+                delivery_status = "FAILED"
+                
                 # Fallback без HTML
                 try:
                     clean_text = reminder_text.replace('<b>', '').replace('</b>', '').replace('<i>', '').replace('</i>', '')
                     context.bot.send_message(chat_id=cid, text=clean_text)
-                    logger.info(f"Fallback reminder sent to chat {cid} at {moscow_time}")
+                    logger.info(f"✅ Fallback reminder sent to chat {cid} at {moscow_time}")
+                    delivery_status = "SUCCESS_FALLBACK"
+                    error_details = f"HTML failed: {str(e)}, sent as plain text"
+                    total_sent += 1
+                    
                 except Exception as e2:
-                    logger.error(f"Failed to send fallback reminder to chat {cid}: {e2}")
+                    logger.error(f"❌ Failed to send fallback reminder to chat {cid}: {e2}")
+                    error_details = f"HTML failed: {str(e)}, Plain text failed: {str(e2)}"
+                    total_failed += 1
+            
+            # 📊 Логируем каждую отправку в Google Sheets
+            if SHEETS_AVAILABLE and sheets_manager:
+                try:
+                    sheets_manager.log_send_history(
+                        utc_time=utc_time,
+                        moscow_time=moscow_time,
+                        reminder_id=reminder_id,
+                        chat_id=str(cid),
+                        status=delivery_status,
+                        error=error_details,
+                        text_preview=reminder.get('text', '')[:50] + "..." if len(reminder.get('text', '')) > 50 else reminder.get('text', '')
+                    )
+                except Exception as e:
+                    logger.error(f"❌ Error logging send to Google Sheets for chat {cid}: {e}")
+        
+        # 📊 Итоговый лог в Google Sheets
+        if SHEETS_AVAILABLE and sheets_manager:
+            try:
+                final_status = "COMPLETED" if total_failed == 0 else f"PARTIAL ({total_sent}/{total_sent + total_failed})"
+                sheets_manager.log_send_history(
+                    utc_time=utc_time,
+                    moscow_time=moscow_time,
+                    reminder_id=reminder_id,
+                    chat_id="SUMMARY",
+                    status=final_status,
+                    error=f"Sent: {total_sent}, Failed: {total_failed}",
+                    text_preview=f"Total chats: {len(chats)}"
+                )
+                logger.info(f"📊 Logged final summary for reminder #{reminder_id}: {total_sent} sent, {total_failed} failed")
+            except Exception as e:
+                logger.error(f"❌ Error logging final summary to Google Sheets: {e}")
+        
+        logger.info(f"📈 Reminder #{reminder_id} delivery summary: {total_sent} sent, {total_failed} failed")
         
         # Удаляем разовые напоминания после отправки
         if reminder.get("type") == "once":
             reminders = load_reminders()
             reminders = [r for r in reminders if r.get("id") != reminder.get("id")]
             save_reminders(reminders)
-            logger.info(f"One-time reminder {reminder.get('id')} removed after sending")
+            logger.info(f"🗑️ One-time reminder #{reminder_id} removed after sending")
+            
+            # 📊 Логируем удаление в Google Sheets
+            if SHEETS_AVAILABLE and sheets_manager:
+                try:
+                    sheets_manager.sync_reminder(reminder, "DELETE")
+                    logger.info(f"📊 Synced reminder #{reminder_id} deletion to Google Sheets")
+                except Exception as e:
+                    logger.error(f"❌ Error syncing reminder deletion to Google Sheets: {e}")
             
     except Exception as e:
-        logger.error(f"Error in send_reminder: {e}")
+        logger.error(f"❌ Critical error in send_reminder: {e}")
+        
+        # 📊 Логируем критическую ошибку в Google Sheets
+        if SHEETS_AVAILABLE and sheets_manager:
+            try:
+                utc_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                moscow_time = get_moscow_time().strftime("%H:%M MSK")
+                sheets_manager.log_send_history(
+                    utc_time=utc_time,
+                    moscow_time=moscow_time,
+                    reminder_id=reminder.get('id', 'unknown') if 'reminder' in locals() else 'unknown',
+                    chat_id="ERROR",
+                    status="CRITICAL_ERROR",
+                    error=str(e),
+                    text_preview="Critical error in send_reminder function"
+                )
+            except:
+                pass  # Не логируем ошибку логирования, чтобы не создать бесконечный цикл
 
 def schedule_reminder(job_queue, reminder):
     """
