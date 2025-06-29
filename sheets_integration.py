@@ -33,8 +33,14 @@ def handle_rate_limit_with_retry(func, max_retries: int = 3, base_delay: float =
             # Проверяем на ошибку rate limiting
             if "429" in error_str or "RATE_LIMIT_EXCEEDED" in error_str or "Quota exceeded" in error_str:
                 if attempt < max_retries:
-                    # Экспоненциальная задержка с jitter
-                    delay = base_delay * (2 ** attempt) + random.uniform(0.1, 0.5)
+                    # Более агрессивная экспоненциальная задержка для rate limiting
+                    if attempt == 0:
+                        delay = base_delay + random.uniform(0.5, 1.5)  # 1.5-2.5 секунд
+                    elif attempt == 1:
+                        delay = base_delay * 3 + random.uniform(1.0, 2.0)  # 4-5 секунд  
+                    else:
+                        delay = base_delay * 6 + random.uniform(2.0, 4.0)  # 8-10 секунд
+                    
                     logger.warning(f"⏱️ Rate limit exceeded. Retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries + 1})")
                     time.sleep(delay)
                     continue
@@ -233,8 +239,8 @@ class SheetsManager:
             logger.info(f"Synced reminder {reminder.get('id')} with action {action}")
         
         try:
-            # Используем retry механизм для обработки rate limiting
-            handle_rate_limit_with_retry(_sync_operation, max_retries=3, base_delay=1.0)
+            # Используем retry механизм для обработки rate limiting с увеличенными параметрами
+            handle_rate_limit_with_retry(_sync_operation, max_retries=5, base_delay=2.0)
             
         except Exception as e:
             logger.error(f"Error syncing reminder: {e}")
@@ -362,8 +368,8 @@ class SheetsManager:
                 logger.warning(f"⚠️ Chat {chat_id} not found in Chat_Stats for reminders count update")
         
         try:
-            # Используем retry механизм для обработки rate limiting
-            handle_rate_limit_with_retry(_update_operation, max_retries=3, base_delay=1.0)
+            # Используем retry механизм для обработки rate limiting с увеличенными параметрами
+            handle_rate_limit_with_retry(_update_operation, max_retries=5, base_delay=2.0)
             
         except Exception as e:
             logger.error(f"Error updating reminders count: {e}")

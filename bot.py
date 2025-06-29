@@ -885,10 +885,35 @@ def clear_reminders(update: Update, context: CallbackContext):
                 sheets_manager.log_reminder_action("CLEAR_ALL", update.effective_user.id, username, chat_id, f"Started mass deletion of {reminders_count} reminders", "")
                 
                 # Синхронизируем каждое напоминание - устанавливаем статус "Deleted"
+                # Для больших количеств добавляем батчинг с перерывами
                 synced_count = 0
                 failed_count = 0
+                batch_size = 5  # Обрабатываем по 5 напоминаний за раз
+                batch_delay = 10.0  # 10 секунд между батчами
+                
                 for i, reminder in enumerate(all_reminders):
                     try:
+                        # Проверяем, нужен ли перерыв между батчами
+                        if i > 0 and i % batch_size == 0:
+                            logger.info(f"📦 Completed batch {i//batch_size}, waiting {batch_delay}s before next batch...")
+                            
+                            # Обновляем сообщение о прогрессе между батчами
+                            try:
+                                context.bot.edit_message_text(
+                                    chat_id=progress_message.chat_id,
+                                    message_id=progress_message.message_id,
+                                    text=f"🔄 <b>Пауза между батчами...</b>\n\n"
+                                         f"✅ Обработано: {i}/{reminders_count}\n"
+                                         f"✅ Успешно: {synced_count}\n"
+                                         f"❌ Ошибки: {failed_count}\n\n"
+                                         f"⏱️ Ожидание {batch_delay}s...",
+                                    parse_mode=ParseMode.HTML
+                                )
+                            except:
+                                pass
+                            
+                            time.sleep(batch_delay)
+                        
                         reminder_data = {
                             "id": reminder.get('id'),
                             "text": reminder.get('text', ''),
@@ -910,9 +935,15 @@ def clear_reminders(update: Update, context: CallbackContext):
                             failed_count += 1
                             logger.warning(f"⚠️ Failed to sync reminder #{reminder.get('id')} deletion")
                         
-                        # Добавляем небольшую задержку между операциями для предотвращения rate limiting
+                        # Добавляем задержку между операциями для предотвращения rate limiting
+                        # Увеличиваем задержку до 1-2 секунд для соблюдения лимита 60 запросов/минуту
                         if i < len(all_reminders) - 1:  # Не задерживаем после последнего
-                            time.sleep(0.2)  # 200ms задержка между запросами
+                            # Прогрессивная задержка: больше времени для более поздних операций
+                            base_delay = 1.0  # Базовая задержка 1 секунда
+                            progressive_delay = (i % batch_size) * 0.2  # Дополнительная задержка внутри батча
+                            total_delay = base_delay + progressive_delay
+                            time.sleep(total_delay)
+                            logger.debug(f"⏱️ Waiting {total_delay:.1f}s before next sync operation ({i+2}/{len(all_reminders)})")
                         
                     except Exception as e:
                         logger.error(f"❌ Error syncing reminder #{reminder.get('id')} deletion: {e}")
@@ -932,8 +963,8 @@ def clear_reminders(update: Update, context: CallbackContext):
                 except:
                     pass
                 
-                # Небольшая задержка перед обновлением статистики
-                time.sleep(0.5)
+                # Увеличенная задержка перед обновлением статистики
+                time.sleep(2.0)  # Увеличиваем с 0.5 до 2 секунд
                 
                 # Обновляем количество напоминаний для чата (должно стать 0)
                 count_update_success = sheets_manager.update_reminders_count(chat_id)
