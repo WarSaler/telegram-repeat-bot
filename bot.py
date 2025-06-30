@@ -30,6 +30,9 @@ except Exception as e:
 # Константа для московского времени
 MOSCOW_TZ = pytz.timezone('Europe/Moscow')
 
+# Время запуска бота
+BOT_START_TIME = None
+
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -1677,6 +1680,52 @@ def ensure_subscribed_chats_file():
     
     return False
 
+def ensure_reminders_file():
+    """🆕 Проверяет и восстанавливает reminders.json при необходимости"""
+    try:
+        # Проверяем существует ли файл и не пустой ли он
+        existing_reminders = load_reminders()
+        if existing_reminders and len(existing_reminders) > 0:
+            logger.info(f"✅ Found {len(existing_reminders)} existing reminders")
+            return True, len(existing_reminders)  # Файл в порядке
+    except Exception:
+        pass  # Файл отсутствует или поврежден
+    
+    # Детальная диагностика доступности Google Sheets для напоминаний
+    logger.warning("⚠️ reminders.json is missing, empty or corrupted. Attempting restore from Google Sheets...")
+    logger.info(f"🔍 Google Sheets reminders restore check:")
+    
+    if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
+        logger.info("   ✅ Google Sheets available for reminders restore")
+        try:
+            success, message = sheets_manager.restore_reminders_from_sheets()
+            if success:
+                restored_reminders = load_reminders()
+                restored_count = len(restored_reminders)
+                logger.info(f"✅ Successfully restored {restored_count} reminders from Google Sheets")
+                return True, restored_count
+            else:
+                logger.error(f"❌ Failed to restore reminders from Google Sheets: {message}")
+        except Exception as e:
+            logger.error(f"❌ Exception during reminders restore: {e}")
+    else:
+        logger.warning("📵 Google Sheets not available for reminders restoration")
+        logger.warning("   This means:")
+        logger.warning("   1. Check GOOGLE_SHEETS_ID environment variable")
+        logger.warning("   2. Check GOOGLE_SHEETS_CREDENTIALS environment variable") 
+        logger.warning("   3. Verify Google Sheets API access")
+        logger.warning("   4. Ensure reminders exist in Google Sheets with 'Active' status")
+    
+    # Создаем пустой файл как fallback
+    logger.warning("📝 Creating empty reminders.json as fallback")
+    logger.warning("⚠️ ВНИМАНИЕ: Бот не сможет отправлять напоминания без активных заданий!")
+    logger.warning("   Для работы бота нужно:")
+    logger.warning("   1. Создать напоминания командами /remind, /remind_daily, /remind_weekly")
+    logger.warning("   2. Или восстановить из Google Sheets командой /restore_reminders")
+    
+    save_reminders([])
+    return False, 0
+
 def auto_sync_subscribed_chats(context: CallbackContext):
     """Автоматическая синхронизация subscribed_chats.json с Google Sheets каждый час"""
     try:
@@ -1694,6 +1743,108 @@ def auto_sync_subscribed_chats(context: CallbackContext):
             
     except Exception as e:
         logger.error(f"❌ Error in hourly sync: {e}")
+
+def auto_sync_reminders(context: CallbackContext):
+    """🆕 Автоматическая синхронизация напоминаний с Google Sheets каждые 2 часа"""
+    try:
+        moscow_time = get_moscow_time().strftime("%H:%M MSK")
+        logger.info(f"🔄 Starting reminders auto-sync at {moscow_time}")
+        
+        if not SHEETS_AVAILABLE or not sheets_manager or not sheets_manager.is_initialized:
+            logger.warning(f"📵 Google Sheets not available for reminders sync at {moscow_time}")
+            return
+        
+        try:
+            # Проверяем есть ли локальные напоминания
+            current_reminders = load_reminders()
+            current_count = len(current_reminders)
+            
+            logger.info(f"📋 Current local reminders: {current_count}")
+            
+            # Пытаемся получить напоминания из Google Sheets
+            success, message = sheets_manager.restore_reminders_from_sheets()
+            
+            if success:
+                synced_reminders = load_reminders()
+                synced_count = len(synced_reminders)
+                
+                if synced_count != current_count:
+                    logger.info(f"🔄 Auto-sync: Updated reminders {current_count} → {synced_count}")
+                    
+                    # Перепланируем все напоминания
+                    reschedule_all_reminders(context.dispatcher.job_queue)
+                    logger.info(f"✅ Reminders rescheduled after auto-sync at {moscow_time}")
+                    
+                    # Проверяем активные задания после перепланирования
+                    active_jobs_after = check_active_jobs(context.dispatcher.job_queue)
+                    logger.info(f"📊 Active jobs after auto-sync: {active_jobs_after}")
+                    
+                    # Логируем в Google Sheets
+                    if sheets_manager.is_initialized:
+                        try:
+                            sheets_manager.log_operation(
+                                timestamp=moscow_time,
+                                action="AUTO_SYNC_REMINDERS",
+                                user_id="SYSTEM",
+                                username="AutoSync",
+                                chat_id=0,
+                                details=f"Auto-sync updated reminders: {current_count} → {synced_count}, active jobs: {active_jobs_after}",
+                                reminder_id=""
+                            )
+                        except:
+                            pass
+                else:
+                    logger.info(f"✅ Auto-sync: Reminders already in sync ({current_count} items) at {moscow_time}")
+            else:
+                logger.warning(f"⚠️ Auto-sync reminders failed at {moscow_time}: {message}")
+                
+                # При неудаче автосинхронизации проверяем есть ли хотя бы локальные напоминания
+                if current_count == 0:
+                    logger.warning("🚨 CRITICAL: No local reminders AND auto-sync failed!")
+                    logger.warning("   This means NO reminders will be sent until manual intervention")
+                    logger.warning("   Recommended action: use /restore_reminders command")
+                
+        except Exception as e:
+            logger.error(f"❌ Error during reminders auto-sync: {e}")
+            
+            # Проверяем критическое состояние
+            try:
+                current_reminders = load_reminders()
+                if len(current_reminders) == 0:
+                    logger.error("🚨 CRITICAL ERROR: No reminders available after auto-sync failure!")
+            except:
+                logger.error("🚨 CRITICAL ERROR: Cannot access reminders file!")
+            
+    except Exception as e:
+        logger.error(f"❌ Critical error in auto_sync_reminders: {e}")
+
+def check_active_jobs(job_queue):
+    """🆕 Проверяет активные задания напоминаний и выводит статистику"""
+    try:
+        current_jobs = job_queue.jobs()
+        reminder_jobs = [job for job in current_jobs if hasattr(job, 'name') and job.name and job.name.startswith('reminder_')]
+        
+        logger.info(f"📊 Active reminder jobs: {len(reminder_jobs)}")
+        
+        if len(reminder_jobs) > 0:
+            logger.info("📋 Active reminder jobs list:")
+            for job in reminder_jobs:
+                next_run = job.next_run
+                next_run_moscow = utc_to_moscow_time(next_run) if next_run else "Unknown"
+                logger.info(f"   • {job.name}: next run at {next_run_moscow}")
+        else:
+            logger.warning("⚠️ NO ACTIVE REMINDER JOBS FOUND!")
+            logger.warning("   This means reminders will not be sent!")
+            logger.warning("   Possible reasons:")
+            logger.warning("   1. reminders.json is empty")
+            logger.warning("   2. All reminders are in the past")
+            logger.warning("   3. Scheduling failed")
+            
+        return len(reminder_jobs)
+        
+    except Exception as e:
+        logger.error(f"❌ Error checking active jobs: {e}")
+        return 0
 
 def emergency_restore_subscribed_chats(context: CallbackContext):
     """Экстренное восстановление при критической ошибке отправки"""
@@ -1717,8 +1868,130 @@ def emergency_restore_subscribed_chats(context: CallbackContext):
     except Exception as e:
         logger.error(f"❌ Error in emergency restore: {e}")
 
+def bot_status(update: Update, context: CallbackContext):
+    """🆕 Диагностика состояния бота"""
+    try:
+        current_time = get_moscow_time().strftime("%Y-%m-%d %H:%M:%S MSK")
+        
+        # Рассчитываем время работы бота
+        uptime_info = ""
+        if BOT_START_TIME:
+            uptime_delta = get_moscow_time() - BOT_START_TIME
+            hours = uptime_delta.seconds // 3600
+            minutes = (uptime_delta.seconds % 3600) // 60
+            if uptime_delta.days > 0:
+                uptime_info = f"⏱️ <i>Работает: {uptime_delta.days}д {hours}ч {minutes}м</i>\n"
+            else:
+                uptime_info = f"⏱️ <i>Работает: {hours}ч {minutes}м</i>\n"
+        
+        # Проверяем локальные файлы
+        try:
+            reminders = load_reminders()
+            reminders_count = len(reminders)
+        except:
+            reminders_count = 0
+            
+        try:
+            with open("subscribed_chats.json", "r") as f:
+                chats = json.load(f)
+                chats_count = len(chats)
+        except:
+            chats_count = 0
+        
+        # Проверяем активные задания
+        current_jobs = context.dispatcher.job_queue.jobs()
+        reminder_jobs = [job for job in current_jobs if hasattr(job, 'name') and job.name and job.name.startswith('reminder_')]
+        active_jobs_count = len(reminder_jobs)
+        
+        # Проверяем Google Sheets
+        sheets_status = "❌ Недоступен"
+        sheets_details = "Не инициализирован"
+        
+        if SHEETS_AVAILABLE and sheets_manager:
+            if sheets_manager.is_initialized:
+                sheets_status = "✅ Подключен"
+                sheets_details = "Готов к работе"
+            else:
+                sheets_status = "⚠️ Не инициализирован"
+                sheets_details = "Проверьте переменные окружения"
+        
+        # Подсчитываем типы напоминаний
+        once_count = sum(1 for r in reminders if r.get('type') == 'once')
+        daily_count = sum(1 for r in reminders if r.get('type') == 'daily')
+        weekly_count = sum(1 for r in reminders if r.get('type') == 'weekly')
+        
+        # Формируем сообщение
+        status_msg = (
+            f"🤖 <b>Статус бота</b>\n"
+            f"⏰ <i>{current_time}</i>\n"
+            f"{uptime_info}\n"
+            
+            f"📋 <b>Локальные данные:</b>\n"
+            f"• Напоминания: {reminders_count}\n"
+            f"  📅 Разовых: {once_count}\n"
+            f"  🔄 Ежедневных: {daily_count}\n"
+            f"  📆 Еженедельных: {weekly_count}\n"
+            f"• Подписанные чаты: {chats_count}\n\n"
+            
+            f"⚙️ <b>Планировщик заданий:</b>\n"
+            f"• Активные задания: {active_jobs_count}\n"
+            f"• Состояние: {'✅ Работает' if active_jobs_count > 0 else '❌ Нет заданий!'}\n\n"
+            
+            f"📊 <b>Google Sheets:</b>\n"
+            f"• Статус: {sheets_status}\n"
+            f"• Детали: {sheets_details}\n\n"
+            
+            f"🔧 <b>Диагностика:</b>\n"
+        )
+        
+        # Добавляем рекомендации
+        if reminders_count == 0:
+            status_msg += "⚠️ Нет напоминаний - создайте их или используйте /restore_reminders\n"
+        
+        if active_jobs_count == 0:
+            status_msg += "🚨 КРИТИЧНО: Нет активных заданий! Напоминания не будут отправляться!\n"
+            status_msg += "💡 Решение: /restore_reminders для восстановления\n"
+        
+        if chats_count == 0:
+            status_msg += "📭 Нет подписанных чатов - напоминания некому отправлять\n"
+            
+        if not SHEETS_AVAILABLE or not sheets_manager or not sheets_manager.is_initialized:
+            status_msg += "📵 Google Sheets недоступен - автовосстановление отключено\n"
+        
+        # Информация о ближайших заданиях
+        if active_jobs_count > 0:
+            status_msg += f"\n📅 <b>Ближайшие задания:</b>\n"
+            jobs_info = []
+            for job in reminder_jobs[:3]:  # Показываем только 3 ближайших
+                if job.next_run:
+                    next_run_moscow = utc_to_moscow_time(job.next_run)
+                    job_name = job.name.replace('reminder_', '#')
+                    jobs_info.append(f"• {job_name}: {next_run_moscow.strftime('%d.%m %H:%M')}")
+            
+            if jobs_info:
+                status_msg += "\n".join(jobs_info)
+                if active_jobs_count > 3:
+                    status_msg += f"\n• ... и ещё {active_jobs_count - 3} заданий"
+        
+        try:
+            update.message.reply_text(status_msg, parse_mode=ParseMode.HTML)
+        except:
+            # Fallback без HTML
+            clean_msg = status_msg.replace('<b>', '').replace('</b>', '').replace('<i>', '').replace('</i>', '')
+            update.message.reply_text(clean_msg)
+            
+    except Exception as e:
+        logger.error(f"Error in bot_status: {e}")
+        try:
+            update.message.reply_text("❌ <b>Ошибка получения статуса бота</b>", parse_mode=ParseMode.HTML)
+        except:
+            update.message.reply_text("❌ Ошибка получения статуса бота")
+
 def main():
     try:
+        global BOT_START_TIME
+        BOT_START_TIME = get_moscow_time()
+        
         token = os.environ['BOT_TOKEN']
         port = int(os.environ.get('PORT', 8000))
         updater = Updater(token=token, use_context=True)
@@ -1735,6 +2008,15 @@ def main():
         # ✅ ПРОВЕРЯЕМ И ВОССТАНАВЛИВАЕМ ПОДПИСКИ ПРИ ЗАПУСКЕ
         logger.info("🔧 Checking subscribed_chats.json...")
         ensure_subscribed_chats_file()
+        
+        # 🆕 ПРОВЕРЯЕМ И ВОССТАНАВЛИВАЕМ НАПОМИНАНИЯ ПРИ ЗАПУСКЕ
+        logger.info("🔧 Checking reminders.json...")
+        reminders_restored, reminders_count = ensure_reminders_file()
+        if reminders_restored:
+            logger.info(f"✅ Reminders status: {reminders_count} reminders ready for scheduling")
+        else:
+            logger.warning(f"⚠️ Reminders status: starting with empty reminders list")
+            logger.warning("💡 TIP: Use /restore_reminders command to recover data from Google Sheets")
         
         # Добавляем обработчики команд ПЕРВЫМИ
         dp.add_handler(CommandHandler("start", start))
@@ -1787,12 +2069,34 @@ def main():
         dp.add_handler(CommandHandler("clear_reminders", clear_reminders))
         dp.add_handler(CommandHandler("restore_reminders", restore_reminders))
         dp.add_handler(CommandHandler("next", next_notification))
+        dp.add_handler(CommandHandler("status", bot_status))
 
         # Добавляем обработчик ошибок
         dp.add_error_handler(error_handler)
 
         # Запланировать все сохранённые напоминания
+        logger.info("📋 Scheduling all reminders...")
         schedule_all_reminders(updater.job_queue)
+        
+        # 🆕 ПРОВЕРЯЕМ АКТИВНЫЕ ЗАДАНИЯ ПОСЛЕ ПЛАНИРОВАНИЯ
+        active_jobs_count = check_active_jobs(updater.job_queue)
+        if active_jobs_count == 0:
+            logger.warning("⚠️ CRITICAL: No active reminder jobs scheduled!")
+            logger.warning("   Attempting immediate reminders restore...")
+            
+            # Попытка экстренного восстановления
+            if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
+                try:
+                    success, message = sheets_manager.restore_reminders_from_sheets()
+                    if success:
+                        logger.info("✅ Emergency restore successful, rescheduling...")
+                        reschedule_all_reminders(updater.job_queue)
+                        final_jobs_count = check_active_jobs(updater.job_queue)
+                        logger.info(f"🔄 After emergency restore: {final_jobs_count} active jobs")
+                    else:
+                        logger.error(f"❌ Emergency restore failed: {message}")
+                except Exception as e:
+                    logger.error(f"❌ Exception during emergency restore: {e}")
         
         # Добавляем ping каждые 5 минут для предотвращения засыпания на Render
         updater.job_queue.run_repeating(ping_self, interval=300, first=30)
@@ -1800,15 +2104,59 @@ def main():
         # ✅ АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ ПОДПИСОК КАЖДЫЙ ЧАС
         updater.job_queue.run_repeating(auto_sync_subscribed_chats, interval=3600, first=300)  # Каждый час, первый через 5 мин
         logger.info("🔄 Scheduled hourly subscribed chats sync")
+        
+        # 🆕 АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ НАПОМИНАНИЙ КАЖДЫЕ 2 ЧАСА
+        updater.job_queue.run_repeating(auto_sync_reminders, interval=7200, first=600)  # Каждые 2 часа, первый через 10 мин
+        logger.info("🔄 Scheduled 2-hourly reminders auto-sync")
 
         # Health check server for Render free tier
         threading.Thread(target=start_health_server, daemon=True).start()
         
+        # Улучшенная обработка конфликтов при запуске
+        logger.info("🚀 Starting bot with enhanced conflict handling...")
+        
         # Always run in polling mode
-        updater.bot.delete_webhook(drop_pending_updates=True)
-        updater.start_polling(drop_pending_updates=True)
-        logger.info("Bot started successfully in polling mode")
-        updater.idle()
+        try:
+            updater.bot.delete_webhook(drop_pending_updates=True)
+            
+            # Дополнительная пауза для разрешения конфликтов
+            time.sleep(2)
+            
+            updater.start_polling(drop_pending_updates=True, timeout=10, read_latency=5)
+            logger.info("✅ Bot started successfully in polling mode")
+            
+            # Финальная проверка состояния через 30 секунд
+            time.sleep(30)
+            final_check_jobs = check_active_jobs(updater.job_queue)
+            logger.info(f"🔍 Final status check: {final_check_jobs} reminder jobs active")
+            
+            # Проверяем подписанные чаты
+            try:
+                with open("subscribed_chats.json", "r") as f:
+                    final_chats = json.load(f)
+                    logger.info(f"📱 Final chats check: {len(final_chats)} subscribed chats")
+            except:
+                logger.warning("⚠️ Final chats check: subscribed_chats.json not accessible")
+            
+            # Проверяем напоминания  
+            try:
+                final_reminders = load_reminders()
+                logger.info(f"📋 Final reminders check: {len(final_reminders)} reminders loaded")
+            except:
+                logger.warning("⚠️ Final reminders check: reminders.json not accessible")
+            
+            logger.info("🚀 Bot startup completed successfully!")
+            
+            updater.idle()
+            
+        except Exception as e:
+            logger.error(f"❌ Error starting bot polling: {e}")
+            # Fallback: попытка повторного запуска через 10 секунд
+            logger.info("🔄 Attempting fallback restart in 10 seconds...")
+            time.sleep(10)
+            updater.start_polling(drop_pending_updates=True)
+            logger.info("✅ Bot started successfully (fallback mode)")
+            updater.idle()
         
     except Exception as e:
         logger.error(f"Critical error in main: {e}")
