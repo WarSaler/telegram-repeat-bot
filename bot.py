@@ -2170,13 +2170,13 @@ def main():
         # Добавляем ping каждые 5 минут для предотвращения засыпания на Render
         updater.job_queue.run_repeating(ping_self, interval=300, first=30)
         
-        # ✅ АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ ПОДПИСОК КАЖДЫЙ ЧАС
-        updater.job_queue.run_repeating(auto_sync_subscribed_chats, interval=3600, first=300)  # Каждый час, первый через 5 мин
-        logger.info("🔄 Scheduled hourly subscribed chats sync")
+        # ✅ АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ ПОДПИСОК КАЖДЫЕ 5 МИНУТ
+        updater.job_queue.run_repeating(auto_sync_subscribed_chats, interval=300, first=300)  # Каждые 5 минут, первый через 5 мин
+        logger.info("🔄 Scheduled 5-minute subscribed chats sync")
         
-        # 🆕 АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ НАПОМИНАНИЙ КАЖДЫЙ ЧАС
-        updater.job_queue.run_repeating(auto_sync_reminders, interval=3600, first=600)  # Каждый час, первый через 10 мин
-        logger.info("🔄 Scheduled hourly reminders auto-sync")
+        # 🆕 АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ НАПОМИНАНИЙ КАЖДЫЕ 5 МИНУТ
+        updater.job_queue.run_repeating(auto_sync_reminders, interval=300, first=600)  # Каждые 5 минут, первый через 10 мин
+        logger.info("🔄 Scheduled 5-minute reminders auto-sync")
 
         # Health check server for Render free tier
         threading.Thread(target=start_health_server, daemon=True).start()
