@@ -1833,8 +1833,22 @@ def check_active_jobs(job_queue):
             for job in reminder_jobs:
                 # 🔧 ИСПРАВЛЕНО: безопасная проверка атрибута next_run
                 try:
-                    if hasattr(job, 'next_run') and job.next_run:
-                        next_run_moscow = utc_to_moscow_time(job.next_run)
+                        # Универсальная проверка времени следующего выполнения
+                        next_run = None
+                        if hasattr(job, 'next_run_time') and job.next_run_time:
+                            next_run = job.next_run_time
+                        elif hasattr(job, 'next_run') and job.next_run:
+                            next_run = job.next_run
+                        elif hasattr(job, 'trigger'):
+                            try:
+                                from datetime import datetime
+                                import pytz
+                                utc_now = datetime.now(pytz.UTC)
+                                next_run = job.trigger.get_next_fire_time(None, utc_now)
+                            except: pass
+                        
+                        if next_run:
+                        next_run_moscow = utc_to_moscow_time(next_run)
                         logger.info(f"   • {job.name}: next run at {next_run_moscow}")
                     else:
                         logger.info(f"   • {job.name}: scheduled (time info unavailable)")
@@ -1972,8 +1986,24 @@ def bot_status(update: Update, context: CallbackContext):
                 
                 for sync_type, job, name, period in sync_jobs:
                     try:
-                        if hasattr(job, 'next_run') and job.next_run:
-                            next_run_moscow = utc_to_moscow_time(job.next_run)
+                        # Улучшенная проверка времени следующего выполнения
+                        next_run = None
+                        
+                        # Пробуем разные способы получить время следующего выполнения
+                        if hasattr(job, 'next_run_time') and job.next_run_time:
+                            next_run = job.next_run_time
+                        elif hasattr(job, 'next_run') and job.next_run:
+                            next_run = job.next_run
+                        elif hasattr(job, 'trigger') and hasattr(job.trigger, 'get_next_fire_time'):
+                            try:
+                                from datetime import datetime
+                                import pytz
+                                utc_now = datetime.now(pytz.UTC)
+                                next_run = job.trigger.get_next_fire_time(None, utc_now)
+                            except: pass
+                        
+                        if next_run:
+                            next_run_moscow = utc_to_moscow_time(next_run)
                             time_diff = next_run_moscow - now_moscow
                             
                             # Форматируем время до следующей синхронизации
@@ -2027,7 +2057,7 @@ def bot_status(update: Update, context: CallbackContext):
                 # 🔧 ИСПРАВЛЕНО: безопасная проверка атрибута next_run
                 try:
                     if hasattr(job, 'next_run') and job.next_run:
-                        next_run_moscow = utc_to_moscow_time(job.next_run)
+                        next_run_moscow = utc_to_moscow_time(next_run)
                         job_name = job.name.replace('reminder_', '#')
                         jobs_info.append(f"• {job_name}: {next_run_moscow.strftime('%d.%m %H:%M')}")
                     else:
