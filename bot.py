@@ -1770,6 +1770,7 @@ def auto_sync_reminders(context: CallbackContext):
                 
                 if synced_count != current_count:
                     logger.info(f"🔄 Auto-sync: Updated reminders {current_count} → {synced_count}")
+                    logger.info(f"🛡️ File completely overwritten - no duplicates possible")
                     
                     # Перепланируем все напоминания
                     reschedule_all_reminders(context.dispatcher.job_queue)
@@ -1788,13 +1789,14 @@ def auto_sync_reminders(context: CallbackContext):
                                 user_id="SYSTEM",
                                 username="AutoSync",
                                 chat_id=0,
-                                details=f"Auto-sync updated reminders: {current_count} → {synced_count}, active jobs: {active_jobs_after}",
+                                details=f"Auto-sync updated reminders: {current_count} → {synced_count}, active jobs: {active_jobs_after}, no duplicates",
                                 reminder_id=""
                             )
                         except:
                             pass
                 else:
                     logger.info(f"✅ Auto-sync: Reminders already in sync ({current_count} items) at {moscow_time}")
+                    logger.info(f"🛡️ No changes needed - all reminders unique")
             else:
                 logger.warning(f"⚠️ Auto-sync reminders failed at {moscow_time}: {message}")
                 

@@ -437,6 +437,8 @@ class SheetsManager:
             
             # Фильтруем только активные напоминания
             active_reminders = []
+            seen_ids = set()  # 🆕 Отслеживаем уже обработанные ID
+            
             for record in records:
                 try:
                     # Проверяем статус
@@ -445,13 +447,24 @@ class SheetsManager:
                         logger.debug(f"Skipping reminder {record.get('ID')} with status: {status}")
                         continue
                     
+                    # 🆕 Проверяем уникальность ID
+                    reminder_id = str(record.get('ID', '')).strip()
+                    if not reminder_id or reminder_id in seen_ids:
+                        if not reminder_id:
+                            logger.warning(f"Skipping reminder with empty ID: {record}")
+                        else:
+                            logger.warning(f"Skipping duplicate reminder ID: {reminder_id}")
+                        continue
+                    
+                    seen_ids.add(reminder_id)  # 🆕 Запоминаем ID
+                    
                     # Конвертируем в формат бота
                     reminder_type = record.get('Type', '').strip().lower()
                     
                     if reminder_type == 'once':
                         # Разовое напоминание
                         restored_reminder = {
-                            "id": str(record.get('ID', '')),
+                            "id": reminder_id,  # 🆕 Используем проверенный ID
                             "type": "once",
                             "datetime": record.get('Time_MSK', ''),
                             "text": record.get('Text', ''),
@@ -465,7 +478,7 @@ class SheetsManager:
                     elif reminder_type == 'daily':
                         # Ежедневное напоминание
                         restored_reminder = {
-                            "id": str(record.get('ID', '')),
+                            "id": reminder_id,  # 🆕 Используем проверенный ID
                             "type": "daily",
                             "time": record.get('Time_MSK', ''),
                             "text": record.get('Text', ''),
@@ -491,7 +504,7 @@ class SheetsManager:
                             time_str = record.get('Time_MSK', '10:00')
                         
                         restored_reminder = {
-                            "id": str(record.get('ID', '')),
+                            "id": reminder_id,  # 🆕 Используем проверенный ID
                             "type": "weekly",
                             "day": day_name,
                             "time": time_str,
@@ -524,6 +537,18 @@ class SheetsManager:
                 logger.warning("No active reminders found in Google Sheets")
                 return False, "В Google Sheets не найдено активных напоминаний"
             
+            # 🆕 Дополнительная статистика восстановления
+            total_processed = len(records)
+            duplicates_skipped = total_processed - len(seen_ids) - len([r for r in records if r.get('Status', '').lower() != 'active'])
+            invalid_skipped = len(seen_ids) - len(active_reminders)
+            
+            logger.info(f"📊 Restore statistics:")
+            logger.info(f"   Total records in Google Sheets: {total_processed}")
+            logger.info(f"   Active reminders found: {len(active_reminders)}")
+            logger.info(f"   Duplicates skipped: {duplicates_skipped}")
+            logger.info(f"   Invalid records skipped: {invalid_skipped}")
+            logger.info(f"   Non-active records skipped: {total_processed - len(seen_ids)}")
+            
             # Сохраняем восстановленные напоминания
             try:
                 import json
@@ -531,6 +556,7 @@ class SheetsManager:
                     json.dump(active_reminders, f, ensure_ascii=False, indent=2)
                 
                 logger.info(f"✅ Successfully restored {len(active_reminders)} active reminders from Google Sheets to {target_file}")
+                logger.info(f"🔄 File completely overwritten - no duplicates possible")
                 
                 # Логируем операцию восстановления
                 moscow_time = datetime.now(MOSCOW_TZ).strftime('%Y-%m-%d %H:%M:%S')
@@ -540,11 +566,11 @@ class SheetsManager:
                     user_id="SYSTEM",
                     username="AutoRestore",
                     chat_id=0,
-                    details=f"Restored {len(active_reminders)} active reminders from Google Sheets",
+                    details=f"Restored {len(active_reminders)} active reminders from Google Sheets (duplicates: {duplicates_skipped}, invalid: {invalid_skipped})",
                     reminder_id=""
                 )
                 
-                return True, f"Успешно восстановлено {len(active_reminders)} активных напоминаний"
+                return True, f"Успешно восстановлено {len(active_reminders)} активных напоминаний (без дубликатов)"
                 
             except Exception as e:
                 logger.error(f"Error saving restored reminders to {target_file}: {e}")
