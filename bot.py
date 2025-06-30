@@ -103,7 +103,7 @@ def error_handler(update: Update, context: CallbackContext):
     elif isinstance(context.error, BadRequest):
         logger.warning(f"⚠️ Bad request: {context.error}")
         return
-    
+
     logger.error("❌ Uncaught exception:", exc_info=context.error)
 
 def subscribe_chat(chat_id, chat_name="Unknown", chat_type="private", members_count=None):
@@ -215,7 +215,7 @@ def start(update: Update, context: CallbackContext):
     Обработчик команды /start.
     """
     try:
-        chat_id = update.effective_chat.id
+    chat_id = update.effective_chat.id
         moscow_time = get_moscow_time().strftime("%H:%M MSK")
         logger.info(f"Received /start from chat {chat_id} at {moscow_time}")
         
@@ -231,9 +231,9 @@ def start(update: Update, context: CallbackContext):
             pass
         
         subscribe_chat(chat_id, chat_name, chat_type, members_count)
-        context.bot.send_message(chat_id=chat_id,
+    context.bot.send_message(chat_id=chat_id,
                                  text="✅ <b>Бот активирован в этом чате</b>\n⏰ <i>Время работы: московское (MSK)</i>",
-                                 parse_mode=ParseMode.HTML)
+                             parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"Error in start command: {e}")
         try:
@@ -247,7 +247,7 @@ def test(update: Update, context: CallbackContext):
     Обработчик команды /test для проверки работы бота.
     """
     try:
-        chat_id = update.effective_chat.id
+    chat_id = update.effective_chat.id
         moscow_time = get_moscow_time().strftime("%H:%M MSK")
         logger.info(f"Received /test from chat {chat_id} at {moscow_time}")
         
@@ -264,9 +264,9 @@ def test(update: Update, context: CallbackContext):
         
         subscribe_chat(chat_id, chat_name, chat_type, members_count)
         current_time = get_moscow_time().strftime("%Y-%m-%d %H:%M MSK")
-        context.bot.send_message(chat_id=chat_id,
+    context.bot.send_message(chat_id=chat_id,
                                  text=f"✅ <b>Бот работает корректно!</b>\n⏰ <i>Текущее время: {current_time}</i>",
-                                 parse_mode=ParseMode.HTML)
+                             parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"Error in test command: {e}")
         try:
@@ -338,7 +338,7 @@ def start_add_one_reminder(update: Update, context: CallbackContext):
         logger.error(f"Error in start_add_one_reminder: {e}")
         current_time = get_moscow_time().strftime("%Y-%m-%d %H:%M MSK")
         update.message.reply_text(f"📅 Разовое напоминание\n\nВведите дату и время в формате ГГГГ-ММ-ДД ЧЧ:ММ\nНапример: 2024-07-10 16:30\n\n⏰ Сейчас: {current_time}")
-        return REMINDER_DATE
+    return REMINDER_DATE
 
 def receive_reminder_datetime(update: Update, context: CallbackContext):
     text = update.message.text.strip()
@@ -371,20 +371,20 @@ def receive_reminder_datetime(update: Update, context: CallbackContext):
 
 def receive_reminder_text(update: Update, context: CallbackContext):
     try:
-        reminders = load_reminders()
+    reminders = load_reminders()
         new_id = get_next_reminder_id()
         reminder_text = update.message.text_html if update.message.text_html else update.message.text.strip()
         
         # Безопасно обрабатываем HTML
         reminder_text = safe_html_escape(reminder_text)
         
-        reminders.append({
-            "id": new_id,
-            "type": "once",
-            "datetime": context.user_data["reminder_datetime"],
+    reminders.append({
+        "id": new_id,
+        "type": "once",
+        "datetime": context.user_data["reminder_datetime"],
             "text": reminder_text
-        })
-        save_reminders(reminders)
+    })
+    save_reminders(reminders)
         
         # ✅ ИНТЕГРАЦИЯ С GOOGLE SHEETS
         if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
@@ -439,7 +439,7 @@ def receive_reminder_text(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in receive_reminder_text: {e}")
         update.message.reply_text("❌ Ошибка при добавлении напоминания")
-        return ConversationHandler.END
+    return ConversationHandler.END
 
 # --- Обработчики добавления ежедневного напоминания ---
 def start_add_daily_reminder(update: Update, context: CallbackContext):
@@ -450,7 +450,7 @@ def start_add_daily_reminder(update: Update, context: CallbackContext):
     except:
         current_time = get_moscow_time().strftime("%H:%M MSK")
         update.message.reply_text(f"🔄 Ежедневное напоминание\n\nВведите время в формате ЧЧ:ММ\nНапример: 08:00\n\n⏰ Сейчас: {current_time}")
-        return DAILY_TIME
+    return DAILY_TIME
 
 def receive_daily_time(update: Update, context: CallbackContext):
     text = update.message.text.strip()
@@ -471,18 +471,18 @@ def receive_daily_time(update: Update, context: CallbackContext):
 
 def receive_daily_text(update: Update, context: CallbackContext):
     try:
-        reminders = load_reminders()
+    reminders = load_reminders()
         new_id = get_next_reminder_id()
         reminder_text = update.message.text_html if update.message.text_html else update.message.text.strip()
         reminder_text = safe_html_escape(reminder_text)
         
-        reminders.append({
-            "id": new_id,
-            "type": "daily",
-            "time": context.user_data["daily_time"],
+    reminders.append({
+        "id": new_id,
+        "type": "daily",
+        "time": context.user_data["daily_time"],
             "text": reminder_text
-        })
-        save_reminders(reminders)
+    })
+    save_reminders(reminders)
         
         # ✅ ИНТЕГРАЦИЯ С GOOGLE SHEETS
         if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
@@ -537,7 +537,7 @@ def receive_daily_text(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in receive_daily_text: {e}")
         update.message.reply_text("❌ Ошибка при добавлении напоминания")
-        return ConversationHandler.END
+    return ConversationHandler.END
 
 # --- Обработчики добавления еженедельного напоминания ---
 def start_add_weekly_reminder(update: Update, context: CallbackContext):
@@ -548,7 +548,7 @@ def start_add_weekly_reminder(update: Update, context: CallbackContext):
     except:
         current_time = get_moscow_time().strftime("%H:%M MSK")
         update.message.reply_text(f"📆 Еженедельное напоминание\n\nВведите день недели:\nПонедельник, Вторник, Среда, Четверг, Пятница, Суббота, Воскресенье\n\n⏰ Сейчас: {current_time}")
-        return WEEKLY_DAY
+    return WEEKLY_DAY
 
 def receive_weekly_day(update: Update, context: CallbackContext):
     # ✅ ЗАЩИТА ОТ None - исправление AttributeError
@@ -594,19 +594,19 @@ def receive_weekly_time(update: Update, context: CallbackContext):
 
 def receive_weekly_text(update: Update, context: CallbackContext):
     try:
-        reminders = load_reminders()
+    reminders = load_reminders()
         new_id = get_next_reminder_id()
         reminder_text = update.message.text_html if update.message.text_html else update.message.text.strip()
         reminder_text = safe_html_escape(reminder_text)
         
-        reminders.append({
-            "id": new_id,
-            "type": "weekly",
-            "day": context.user_data["weekly_day"],
-            "time": context.user_data["weekly_time"],
+    reminders.append({
+        "id": new_id,
+        "type": "weekly",
+        "day": context.user_data["weekly_day"],
+        "time": context.user_data["weekly_time"],
             "text": reminder_text
-        })
-        save_reminders(reminders)
+    })
+    save_reminders(reminders)
         
         # ✅ ИНТЕГРАЦИЯ С GOOGLE SHEETS
         if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
@@ -662,18 +662,18 @@ def receive_weekly_text(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in receive_weekly_text: {e}")
         update.message.reply_text("❌ Ошибка при добавлении напоминания")
-        return ConversationHandler.END
+    return ConversationHandler.END
 
 # --- Список напоминаний ---
 def list_reminders(update: Update, context: CallbackContext):
     try:
-        reminders = load_reminders()
-        if not reminders:
+    reminders = load_reminders()
+    if not reminders:
             try:
                 update.message.reply_text("📭 <b>У вас нет активных напоминаний</b>", parse_mode=ParseMode.HTML)
             except:
                 update.message.reply_text("📭 У вас нет активных напоминаний")
-            return
+        return
         
         lines = ["📋 Ваши напоминания:\n"]
         
@@ -683,11 +683,11 @@ def list_reminders(update: Update, context: CallbackContext):
         for i, r in enumerate(reminders, 1):
             try:
                 safe_text = safe_html_escape(r.get('text', ''))
-                if r["type"] == "once":
+        if r["type"] == "once":
                     lines.append(f"{i}. [📅 Разово] {r['datetime']}\n💬 {safe_text}\n")
-                elif r["type"] == "daily":
+        elif r["type"] == "daily":
                     lines.append(f"{i}. [🔄 Ежедневно] {r['time']}\n💬 {safe_text}\n")
-                elif r["type"] == "weekly":
+        elif r["type"] == "weekly":
                     lines.append(f"{i}. [📆 Еженедельно] {r['day'].title()} {r['time']}\n💬 {safe_text}\n")
             except Exception as e:
                 logger.error(f"Error formatting reminder {i}: {e}")
@@ -733,13 +733,13 @@ def list_reminders(update: Update, context: CallbackContext):
 # --- Удаление напоминания ---
 def start_delete_reminder(update: Update, context: CallbackContext):
     try:
-        reminders = load_reminders()
-        if not reminders:
+    reminders = load_reminders()
+    if not reminders:
             try:
                 update.message.reply_text("📭 <b>У вас нет напоминаний для удаления</b>", parse_mode=ParseMode.HTML)
             except:
                 update.message.reply_text("📭 У вас нет напоминаний для удаления")
-            return ConversationHandler.END
+        return ConversationHandler.END
         
         lines = ["🗑 Выберите напоминание для удаления:\nВведите номер:\n"]
         
@@ -752,11 +752,11 @@ def start_delete_reminder(update: Update, context: CallbackContext):
                 if len(r.get('text', '')) > 50:
                     text_preview += '...'
                     
-                if r["type"] == "once":
+        if r["type"] == "once":
                     lines.append(f"{i}. [📅 Разово] {r['datetime']}\n💬 {text_preview}")
-                elif r["type"] == "daily":
+        elif r["type"] == "daily":
                     lines.append(f"{i}. [🔄 Ежедневно] {r['time']}\n💬 {text_preview}")
-                elif r["type"] == "weekly":
+        elif r["type"] == "weekly":
                     lines.append(f"{i}. [📆 Еженедельно] {r['day'].title()} {r['time']}\n💬 {text_preview}")
             except Exception as e:
                 logger.error(f"Error formatting reminder for deletion {i}: {e}")
@@ -769,7 +769,7 @@ def start_delete_reminder(update: Update, context: CallbackContext):
             clean_text = "\n\n".join(lines).replace('<b>', '').replace('</b>', '').replace('<i>', '').replace('</i>', '')
             update.message.reply_text(clean_text)
         
-        return REM_DEL_ID
+    return REM_DEL_ID
         
     except Exception as e:
         logger.error(f"Error in start_delete_reminder: {e}")
@@ -779,7 +779,7 @@ def start_delete_reminder(update: Update, context: CallbackContext):
 def confirm_delete_reminder(update: Update, context: CallbackContext):
     try:
         reminder_number = int(update.message.text.strip())
-        reminders = load_reminders()
+    reminders = load_reminders()
         
         if reminder_number < 1 or reminder_number > len(reminders):
             try:
@@ -831,7 +831,7 @@ def confirm_delete_reminder(update: Update, context: CallbackContext):
         elif SHEETS_AVAILABLE and sheets_manager and not sheets_manager.is_initialized:
             logger.warning(f"📵 Google Sheets not initialized - reminder #{reminder_to_delete.get('id')} deletion not synced")
             logger.warning("   Check GOOGLE_SHEETS_ID and GOOGLE_SHEETS_CREDENTIALS environment variables")
-        else:
+    else:
             logger.warning("📵 Google Sheets not available for reminder deletion sync")
         
         # Удаляем напоминание из локального файла
@@ -1002,7 +1002,7 @@ def clear_reminders(update: Update, context: CallbackContext):
             logger.warning("📵 Google Sheets not available for mass deletion sync")
         
         # Удаляем все напоминания из локального файла
-        save_reminders([])
+    save_reminders([])
         
         # Останавливаем все задания
         job_queue = context.dispatcher.job_queue
@@ -1279,22 +1279,22 @@ def restore_reminders(update: Update, context: CallbackContext):
 # --- Следующее напоминание ---
 def next_notification(update: Update, context: CallbackContext):
     try:
-        reminders = load_reminders()
-        if not reminders:
+    reminders = load_reminders()
+    if not reminders:
             try:
                 update.message.reply_text("📭 <b>Нет запланированных напоминаний</b>", parse_mode=ParseMode.HTML)
             except:
                 update.message.reply_text("📭 Нет запланированных напоминаний")
-            return
+        return
         
         now_moscow = get_moscow_time()
-        soonest = None
-        soonest_time = None
-        days = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
+    soonest = None
+    soonest_time = None
+    days = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
         
-        for r in reminders:
-            t = None
-            if r["type"] == "once":
+    for r in reminders:
+        t = None
+        if r["type"] == "once":
                 try:
                     # Парсим как московское время
                     naive_dt = datetime.strptime(r["datetime"], "%Y-%m-%d %H:%M")
@@ -1303,37 +1303,37 @@ def next_notification(update: Update, context: CallbackContext):
                         continue
                 except ValueError:
                     continue
-            elif r["type"] == "daily":
+        elif r["type"] == "daily":
                 try:
-                    h, m = map(int, r["time"].split(":"))
+            h, m = map(int, r["time"].split(":"))
                     candidate = now_moscow.replace(hour=h, minute=m, second=0, microsecond=0)
                     if candidate < now_moscow:
                         candidate += timedelta(days=1)
-                    t = candidate
+            t = candidate
                 except ValueError:
                     continue
-            elif r["type"] == "weekly":
+        elif r["type"] == "weekly":
                 try:
-                    weekday = days.index(r["day"])
-                    h, m = map(int, r["time"].split(":"))
+            weekday = days.index(r["day"])
+            h, m = map(int, r["time"].split(":"))
                     candidate = now_moscow.replace(hour=h, minute=m, second=0, microsecond=0)
                     days_ahead = (weekday - now_moscow.weekday() + 7) % 7
                     if days_ahead == 0 and candidate < now_moscow:
-                        days_ahead = 7
+                days_ahead = 7
                     t = candidate + timedelta(days=days_ahead)
                 except (ValueError, IndexError):
                     continue
             
             if t and (soonest_time is None or t < soonest_time):
-                soonest_time = t
-                soonest = r
+            soonest_time = t
+            soonest = r
         
-        if soonest is None:
+    if soonest is None:
             try:
                 update.message.reply_text("📭 <b>Нет запланированных напоминаний</b>", parse_mode=ParseMode.HTML)
             except:
                 update.message.reply_text("📭 Нет запланированных напоминаний")
-            return
+        return
         
         time_diff = soonest_time - now_moscow
         
@@ -1351,13 +1351,13 @@ def next_notification(update: Update, context: CallbackContext):
         safe_text = safe_html_escape(soonest.get('text', ''))
         current_time = now_moscow.strftime("%H:%M MSK")
         
-        if soonest["type"] == "once":
+    if soonest["type"] == "once":
             reminder_time = soonest_time.strftime("%Y-%m-%d %H:%M MSK")
             msg = f"📅 <b>Ближайшее напоминание</b>\n\n🕐 Разово: {reminder_time}\n⏰ {time_str}\n💬 {safe_text}\n\n<i>Сейчас: {current_time}</i>"
-        elif soonest["type"] == "daily":
+    elif soonest["type"] == "daily":
             reminder_time = soonest_time.strftime("%H:%M MSK")
             msg = f"🔄 <b>Ближайшее напоминание</b>\n\n🕐 Ежедневно: {reminder_time}\n⏰ {time_str}\n💬 {safe_text}\n\n<i>Сейчас: {current_time}</i>"
-        elif soonest["type"] == "weekly":
+    elif soonest["type"] == "weekly":
             reminder_time = soonest_time.strftime("%H:%M MSK")
             msg = f"📆 <b>Ближайшее напоминание</b>\n\n🕐 Еженедельно: {soonest['day'].title()} {reminder_time}\n⏰ {time_str}\n💬 {safe_text}\n\n<i>Сейчас: {current_time}</i>"
         
@@ -1389,12 +1389,12 @@ def send_reminder(context: CallbackContext):
     Отправляет текст напоминания всем подписанным чатам.
     """
     try:
-        reminder = context.job.context
+    reminder = context.job.context
         
         # Пытаемся загрузить чаты с автовосстановлением
         try:
-            with open("subscribed_chats.json", "r") as f:
-                chats = json.load(f)
+    with open("subscribed_chats.json", "r") as f:
+        chats = json.load(f)
                 if not chats or len(chats) == 0:
                     raise ValueError("Empty chats list")
         except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
@@ -1439,7 +1439,7 @@ def send_reminder(context: CallbackContext):
         total_sent = 0
         total_failed = 0
         
-        for cid in chats:
+    for cid in chats:
             delivery_status = "SUCCESS"
             error_details = ""
             
@@ -1505,9 +1505,9 @@ def send_reminder(context: CallbackContext):
         
         # Удаляем разовые напоминания после отправки
         if reminder.get("type") == "once":
-            reminders = load_reminders()
+        reminders = load_reminders()
             reminders = [r for r in reminders if r.get("id") != reminder.get("id")]
-            save_reminders(reminders)
+        save_reminders(reminders)
             logger.info(f"🗑️ One-time reminder #{reminder_id} removed after sending")
             
             # 📊 Логируем удаление в Google Sheets
@@ -1551,7 +1551,7 @@ def schedule_reminder(job_queue, reminder):
             if hasattr(job, 'name') and job.name == f"reminder_{reminder.get('id')}":
                 job.schedule_removal()
         
-        if reminder["type"] == "once":
+    if reminder["type"] == "once":
             # Парсим как московское время и конвертируем в UTC для планировщика
             moscow_dt = datetime.strptime(reminder["datetime"], "%Y-%m-%d %H:%M")
             moscow_dt = MOSCOW_TZ.localize(moscow_dt)
@@ -1561,8 +1561,8 @@ def schedule_reminder(job_queue, reminder):
                 job_queue.run_once(send_reminder, utc_dt, context=reminder, name=f"reminder_{reminder.get('id')}")
                 logger.info(f"Scheduled one-time reminder {reminder.get('id')} for {moscow_dt.strftime('%Y-%m-%d %H:%M MSK')}")
                 
-        elif reminder["type"] == "daily":
-            h, m = map(int, reminder["time"].split(":"))
+    elif reminder["type"] == "daily":
+        h, m = map(int, reminder["time"].split(":"))
             # Создаем время в московском часовом поясе, затем конвертируем в UTC
             moscow_time = dt_time(hour=h, minute=m)
             # Для ежедневных напоминаний нужно учесть смещение UTC
@@ -1572,25 +1572,25 @@ def schedule_reminder(job_queue, reminder):
             job_queue.run_daily(send_reminder, utc_time, context=reminder, name=f"reminder_{reminder.get('id')}")
             logger.info(f"Scheduled daily reminder {reminder.get('id')} for {h:02d}:{m:02d} MSK (UTC: {utc_hour:02d}:{m:02d})")
             
-        elif reminder["type"] == "weekly":
-            days_map = {
-                "понедельник": 0, "вторник": 1, "среда": 2,
-                "четверг": 3, "пятница": 4, "суббота": 5, "воскресенье": 6
-            }
-            weekday = days_map[reminder["day"].lower()]
-            h, m = map(int, reminder["time"].split(":"))
+    elif reminder["type"] == "weekly":
+        days_map = {
+            "понедельник": 0, "вторник": 1, "среда": 2,
+            "четверг": 3, "пятница": 4, "суббота": 5, "воскресенье": 6
+        }
+        weekday = days_map[reminder["day"].lower()]
+        h, m = map(int, reminder["time"].split(":"))
             
             # Конвертируем московское время в UTC
             utc_hour = (h - 3) % 24  # MSK = UTC+3
             utc_time = dt_time(hour=utc_hour, minute=m)
             
-            job_queue.run_daily(
-                send_reminder,
+        job_queue.run_daily(
+            send_reminder,
                 utc_time,
-                context=reminder,
-                days=(weekday,),
+            context=reminder,
+            days=(weekday,),
                 name=f"reminder_{reminder.get('id')}"
-            )
+        )
             logger.info(f"Scheduled weekly reminder {reminder.get('id')} for {reminder['day']} {h:02d}:{m:02d} MSK")
             
     except Exception as e:
@@ -1601,9 +1601,9 @@ def schedule_all_reminders(job_queue):
     Загружает все напоминания и запланировывает их.
     """
     try:
-        reminders = load_reminders()
-        for reminder in reminders:
-            schedule_reminder(job_queue, reminder)
+    reminders = load_reminders()
+    for reminder in reminders:
+        schedule_reminder(job_queue, reminder)
     except Exception as e:
         logger.error(f"Error scheduling all reminders: {e}")
 
@@ -1727,25 +1727,25 @@ def ensure_reminders_file():
     return False, 0
 
 def auto_sync_subscribed_chats(context: CallbackContext):
-    """Автоматическая синхронизация subscribed_chats.json с Google Sheets каждый час"""
+    """Автоматическая синхронизация subscribed_chats.json с Google Sheets каждые 5 минут"""
     try:
         moscow_time = get_moscow_time().strftime("%H:%M MSK")
-        logger.info(f"🔄 Starting hourly sync at {moscow_time}")
+        logger.info(f"🔄 Starting 5-minute sync at {moscow_time}")
         
         if SHEETS_AVAILABLE and sheets_manager:
             success = sheets_manager.sync_subscribed_chats_from_sheets()
             if success:
-                logger.info(f"✅ Hourly sync completed successfully at {moscow_time}")
+                logger.info(f"✅ 5-minute sync completed successfully at {moscow_time}")
             else:
-                logger.warning(f"⚠️ Hourly sync had issues at {moscow_time}")
+                logger.warning(f"⚠️ 5-minute sync had issues at {moscow_time}")
         else:
             logger.warning(f"📵 Google Sheets not available for sync at {moscow_time}")
             
     except Exception as e:
-        logger.error(f"❌ Error in hourly sync: {e}")
+        logger.error(f"❌ Error in 5-minute sync: {e}")
 
 def auto_sync_reminders(context: CallbackContext):
-    """🆕 Автоматическая синхронизация напоминаний с Google Sheets каждые 2 часа"""
+    """🆕 Автоматическая синхронизация напоминаний с Google Sheets каждые 5 минут"""
     try:
         moscow_time = get_moscow_time().strftime("%H:%M MSK")
         logger.info(f"🔄 Starting reminders auto-sync at {moscow_time}")
@@ -1961,9 +1961,9 @@ def bot_status(update: Update, context: CallbackContext):
             for job in current_jobs:
                 if hasattr(job, 'callback') and job.callback:
                     if job.callback.__name__ == 'auto_sync_subscribed_chats':
-                        sync_jobs.append(('chats', job, '🔄 Чаты', 'каждый час'))
+                        sync_jobs.append(('chats', job, '🔄 Чаты', 'каждые 5 мин'))
                     elif job.callback.__name__ == 'auto_sync_reminders':
-                        sync_jobs.append(('reminders', job, '📋 Напоминания', 'каждый час'))
+                        sync_jobs.append(('reminders', job, '📋 Напоминания', 'каждые 5 мин'))
                     elif job.callback.__name__ == 'ping_self':
                         sync_jobs.append(('ping', job, '🏓 Ping', 'каждые 5 мин'))
             
@@ -2061,18 +2061,18 @@ def main():
         global BOT_START_TIME
         BOT_START_TIME = get_moscow_time()
         
-        token = os.environ['BOT_TOKEN']
-        port = int(os.environ.get('PORT', 8000))
-        updater = Updater(token=token, use_context=True)
+    token = os.environ['BOT_TOKEN']
+    port = int(os.environ.get('PORT', 8000))
+    updater = Updater(token=token, use_context=True)
         
-        # Reset any existing webhook so polling can start cleanly
-        try:
-            res = updater.bot.delete_webhook(drop_pending_updates=True)
-            logger.info("Webhook deleted: %s", res)
-        except Exception as e:
-            logger.error("Error deleting webhook: %s", e)
+    # Reset any existing webhook so polling can start cleanly
+    try:
+        res = updater.bot.delete_webhook(drop_pending_updates=True)
+        logger.info("Webhook deleted: %s", res)
+    except Exception as e:
+        logger.error("Error deleting webhook: %s", e)
         
-        dp = updater.dispatcher
+    dp = updater.dispatcher
         
         # ✅ ПРОВЕРЯЕМ И ВОССТАНАВЛИВАЕМ ПОДПИСКИ ПРИ ЗАПУСКЕ
         logger.info("🔧 Checking subscribed_chats.json...")
@@ -2088,64 +2088,64 @@ def main():
             logger.warning("💡 TIP: Use /restore_reminders command to recover data from Google Sheets")
         
         # Добавляем обработчики команд ПЕРВЫМИ
-        dp.add_handler(CommandHandler("start", start))
-        dp.add_handler(CommandHandler("test", test))
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("test", test))
         
-        conv = ConversationHandler(
-            entry_points=[CommandHandler("remind", start_add_one_reminder)],
-            states={
-                REMINDER_DATE: [MessageHandler(Filters.text & ~Filters.command, receive_reminder_datetime)],
-                REMINDER_TEXT: [MessageHandler(Filters.text & ~Filters.command, receive_reminder_text)],
-            },
-            fallbacks=[CommandHandler("cancel", cancel_reminder)],
-            allow_reentry=True,
-        )
-        dp.add_handler(conv)
+    conv = ConversationHandler(
+        entry_points=[CommandHandler("remind", start_add_one_reminder)],
+        states={
+            REMINDER_DATE: [MessageHandler(Filters.text & ~Filters.command, receive_reminder_datetime)],
+            REMINDER_TEXT: [MessageHandler(Filters.text & ~Filters.command, receive_reminder_text)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_reminder)],
+        allow_reentry=True,
+    )
+    dp.add_handler(conv)
         
-        conv_daily = ConversationHandler(
-            entry_points=[CommandHandler("remind_daily", start_add_daily_reminder)],
-            states={
-                DAILY_TIME: [MessageHandler(Filters.text & ~Filters.command, receive_daily_time)],
-                DAILY_TEXT: [MessageHandler(Filters.text & ~Filters.command, receive_daily_text)],
-            },
-            fallbacks=[CommandHandler("cancel", cancel_reminder)],
-            allow_reentry=True,
-        )
-        dp.add_handler(conv_daily)
+    conv_daily = ConversationHandler(
+        entry_points=[CommandHandler("remind_daily", start_add_daily_reminder)],
+        states={
+            DAILY_TIME: [MessageHandler(Filters.text & ~Filters.command, receive_daily_time)],
+            DAILY_TEXT: [MessageHandler(Filters.text & ~Filters.command, receive_daily_text)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_reminder)],
+        allow_reentry=True,
+    )
+    dp.add_handler(conv_daily)
 
-        conv_weekly = ConversationHandler(
-            entry_points=[CommandHandler("remind_weekly", start_add_weekly_reminder)],
-            states={
-                WEEKLY_DAY: [MessageHandler(Filters.text & ~Filters.command, receive_weekly_day)],
-                WEEKLY_TIME: [MessageHandler(Filters.text & ~Filters.command, receive_weekly_time)],
-                WEEKLY_TEXT: [MessageHandler(Filters.text & ~Filters.command, receive_weekly_text)],
-            },
-            fallbacks=[CommandHandler("cancel", cancel_reminder)],
-            allow_reentry=True,
-        )
-        dp.add_handler(conv_weekly)
+    conv_weekly = ConversationHandler(
+        entry_points=[CommandHandler("remind_weekly", start_add_weekly_reminder)],
+        states={
+            WEEKLY_DAY: [MessageHandler(Filters.text & ~Filters.command, receive_weekly_day)],
+            WEEKLY_TIME: [MessageHandler(Filters.text & ~Filters.command, receive_weekly_time)],
+            WEEKLY_TEXT: [MessageHandler(Filters.text & ~Filters.command, receive_weekly_text)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_reminder)],
+        allow_reentry=True,
+    )
+    dp.add_handler(conv_weekly)
         
-        dp.add_handler(CommandHandler("list_reminders", list_reminders))
+    dp.add_handler(CommandHandler("list_reminders", list_reminders))
         
-        conv_del = ConversationHandler(
-            entry_points=[CommandHandler("del_reminder", start_delete_reminder)],
-            states={REM_DEL_ID: [MessageHandler(Filters.text & ~Filters.command, confirm_delete_reminder)]},
-            fallbacks=[CommandHandler("cancel", cancel_reminder)],
-            allow_reentry=True,
-        )
-        dp.add_handler(conv_del)
+    conv_del = ConversationHandler(
+        entry_points=[CommandHandler("del_reminder", start_delete_reminder)],
+        states={REM_DEL_ID: [MessageHandler(Filters.text & ~Filters.command, confirm_delete_reminder)]},
+        fallbacks=[CommandHandler("cancel", cancel_reminder)],
+        allow_reentry=True,
+    )
+    dp.add_handler(conv_del)
         
-        dp.add_handler(CommandHandler("clear_reminders", clear_reminders))
+    dp.add_handler(CommandHandler("clear_reminders", clear_reminders))
         dp.add_handler(CommandHandler("restore_reminders", restore_reminders))
-        dp.add_handler(CommandHandler("next", next_notification))
+    dp.add_handler(CommandHandler("next", next_notification))
         dp.add_handler(CommandHandler("status", bot_status))
 
         # Добавляем обработчик ошибок
         dp.add_error_handler(error_handler)
 
-        # Запланировать все сохранённые напоминания
+    # Запланировать все сохранённые напоминания
         logger.info("📋 Scheduling all reminders...")
-        schedule_all_reminders(updater.job_queue)
+    schedule_all_reminders(updater.job_queue)
         
         # 🆕 ПРОВЕРЯЕМ АКТИВНЫЕ ЗАДАНИЯ ПОСЛЕ ПЛАНИРОВАНИЯ
         active_jobs_count = check_active_jobs(updater.job_queue)
@@ -2170,23 +2170,23 @@ def main():
         # Добавляем ping каждые 5 минут для предотвращения засыпания на Render
         updater.job_queue.run_repeating(ping_self, interval=300, first=30)
         
-        # ✅ АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ ПОДПИСОК КАЖДЫЙ ЧАС
-        updater.job_queue.run_repeating(auto_sync_subscribed_chats, interval=3600, first=300)  # Каждый час, первый через 5 мин
-        logger.info("🔄 Scheduled hourly subscribed chats sync")
+        # ✅ АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ ПОДПИСОК КАЖДЫЕ 5 МИНУТ
+        updater.job_queue.run_repeating(auto_sync_subscribed_chats, interval=300, first=300)  # Каждые 5 мин, первый через 5 мин
+        logger.info("🔄 Scheduled 5-minute subscribed chats sync")
         
-        # 🆕 АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ НАПОМИНАНИЙ КАЖДЫЙ ЧАС
-        updater.job_queue.run_repeating(auto_sync_reminders, interval=3600, first=600)  # Каждый час, первый через 10 мин
-        logger.info("🔄 Scheduled hourly reminders auto-sync")
+        # 🆕 АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ НАПОМИНАНИЙ КАЖДЫЕ 5 МИНУТ
+        updater.job_queue.run_repeating(auto_sync_reminders, interval=300, first=600)  # Каждые 5 мин, первый через 10 мин
+        logger.info("🔄 Scheduled 5-minute reminders auto-sync")
 
-        # Health check server for Render free tier
-        threading.Thread(target=start_health_server, daemon=True).start()
+    # Health check server for Render free tier
+    threading.Thread(target=start_health_server, daemon=True).start()
         
         # Улучшенная обработка конфликтов при запуске
         logger.info("🚀 Starting bot with enhanced conflict handling...")
         
-        # Always run in polling mode
+    # Always run in polling mode
         try:
-            updater.bot.delete_webhook(drop_pending_updates=True)
+    updater.bot.delete_webhook(drop_pending_updates=True)
             
             # Дополнительная пауза для разрешения конфликтов
             time.sleep(2)
@@ -2223,10 +2223,10 @@ def main():
             # Fallback: попытка повторного запуска через 10 секунд
             logger.info("🔄 Attempting fallback restart in 10 seconds...")
             time.sleep(10)
-            updater.start_polling(drop_pending_updates=True)
+    updater.start_polling(drop_pending_updates=True)
             logger.info("✅ Bot started successfully (fallback mode)")
-            updater.idle()
-        
+    updater.idle()
+
     except Exception as e:
         logger.error(f"Critical error in main: {e}")
         
