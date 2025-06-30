@@ -1961,9 +1961,9 @@ def bot_status(update: Update, context: CallbackContext):
             for job in current_jobs:
                 if hasattr(job, 'callback') and job.callback:
                     if job.callback.__name__ == 'auto_sync_subscribed_chats':
-                        sync_jobs.append(('chats', job, '🔄 Чаты', 'каждый час'))
+                        sync_jobs.append(('chats', job, '🔄 Чаты', 'каждые 5 мин'))
                     elif job.callback.__name__ == 'auto_sync_reminders':
-                        sync_jobs.append(('reminders', job, '📋 Напоминания', 'каждый час'))
+                        sync_jobs.append(('reminders', job, '📋 Напоминания', 'каждые 5 мин'))
                     elif job.callback.__name__ == 'ping_self':
                         sync_jobs.append(('ping', job, '🏓 Ping', 'каждые 5 мин'))
             
