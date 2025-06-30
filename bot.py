@@ -1952,6 +1952,56 @@ def bot_status(update: Update, context: CallbackContext):
             f"🔧 <b>Диагностика:</b>\n"
         )
         
+        # 🆕 Информация об автосинхронизации
+        sync_info = ""
+        try:
+            now_moscow = get_moscow_time()
+            sync_jobs = []
+            
+            for job in current_jobs:
+                if hasattr(job, 'callback') and job.callback:
+                    if job.callback.__name__ == 'auto_sync_subscribed_chats':
+                        sync_jobs.append(('chats', job, '🔄 Чаты', 'каждый час'))
+                    elif job.callback.__name__ == 'auto_sync_reminders':
+                        sync_jobs.append(('reminders', job, '📋 Напоминания', 'каждый час'))
+                    elif job.callback.__name__ == 'ping_self':
+                        sync_jobs.append(('ping', job, '🏓 Ping', 'каждые 5 мин'))
+            
+            if sync_jobs:
+                sync_info += f"🔄 <b>Автосинхронизация:</b>\n"
+                
+                for sync_type, job, name, period in sync_jobs:
+                    try:
+                        if hasattr(job, 'next_run') and job.next_run:
+                            next_run_moscow = utc_to_moscow_time(job.next_run)
+                            time_diff = next_run_moscow - now_moscow
+                            
+                            # Форматируем время до следующей синхронизации
+                            if time_diff.total_seconds() < 0:
+                                time_str = "сейчас"
+                            elif time_diff.total_seconds() < 60:
+                                seconds = int(time_diff.total_seconds())
+                                time_str = f"через {seconds}с"
+                            elif time_diff.total_seconds() < 3600:
+                                minutes = int(time_diff.total_seconds() // 60)
+                                seconds = int(time_diff.total_seconds() % 60)
+                                time_str = f"через {minutes}м {seconds}с"
+                            else:
+                                hours = int(time_diff.total_seconds() // 3600)
+                                minutes = int((time_diff.total_seconds() % 3600) // 60)
+                                time_str = f"через {hours}ч {minutes}м"
+                            
+                            sync_info += f"• {name}: {time_str} ({period})\n"
+                        else:
+                            sync_info += f"• {name}: запланировано ({period})\n"
+                    except Exception:
+                        sync_info += f"• {name}: активно ({period})\n"
+                
+                sync_info += "\n"
+        except Exception as e:
+            logger.error(f"Error getting sync info: {e}")
+            sync_info = "🔄 <b>Автосинхронизация:</b> ошибка получения данных\n\n"
+        
         # Добавляем рекомендации
         if reminders_count == 0:
             status_msg += "⚠️ Нет напоминаний - создайте их или используйте /restore_reminders\n"
@@ -1965,6 +2015,9 @@ def bot_status(update: Update, context: CallbackContext):
             
         if not SHEETS_AVAILABLE or not sheets_manager or not sheets_manager.is_initialized:
             status_msg += "📵 Google Sheets недоступен - автовосстановление отключено\n"
+        
+        # Добавляем информацию о синхронизации ПЕРЕД ближайшими заданиями
+        status_msg += f"\n{sync_info}"
         
         # Информация о ближайших заданиях
         if active_jobs_count > 0:
