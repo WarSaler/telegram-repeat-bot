@@ -1848,10 +1848,10 @@ def check_active_jobs(job_queue):
                             except: pass
                         
                         if next_run:
-                        next_run_moscow = utc_to_moscow_time(next_run)
-                        logger.info(f"   • {job.name}: next run at {next_run_moscow}")
-                    else:
-                        logger.info(f"   • {job.name}: scheduled (time info unavailable)")
+                            next_run_moscow = utc_to_moscow_time(next_run)
+                            logger.info(f"   • {job.name}: next run at {next_run_moscow}")
+                        else:
+                            logger.info(f"   • {job.name}: scheduled (time info unavailable)")
                 except Exception as attr_error:
                     logger.info(f"   • {job.name}: scheduled (next_run attribute error)")
         else:
