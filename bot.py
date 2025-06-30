@@ -1831,9 +1831,15 @@ def check_active_jobs(job_queue):
         if len(reminder_jobs) > 0:
             logger.info("📋 Active reminder jobs list:")
             for job in reminder_jobs:
-                next_run = job.next_run
-                next_run_moscow = utc_to_moscow_time(next_run) if next_run else "Unknown"
-                logger.info(f"   • {job.name}: next run at {next_run_moscow}")
+                # 🔧 ИСПРАВЛЕНО: безопасная проверка атрибута next_run
+                try:
+                    if hasattr(job, 'next_run') and job.next_run:
+                        next_run_moscow = utc_to_moscow_time(job.next_run)
+                        logger.info(f"   • {job.name}: next run at {next_run_moscow}")
+                    else:
+                        logger.info(f"   • {job.name}: scheduled (time info unavailable)")
+                except Exception as attr_error:
+                    logger.info(f"   • {job.name}: scheduled (next_run attribute error)")
         else:
             logger.warning("⚠️ NO ACTIVE REMINDER JOBS FOUND!")
             logger.warning("   This means reminders will not be sent!")
@@ -1965,10 +1971,18 @@ def bot_status(update: Update, context: CallbackContext):
             status_msg += f"\n📅 <b>Ближайшие задания:</b>\n"
             jobs_info = []
             for job in reminder_jobs[:3]:  # Показываем только 3 ближайших
-                if job.next_run:
-                    next_run_moscow = utc_to_moscow_time(job.next_run)
+                # 🔧 ИСПРАВЛЕНО: безопасная проверка атрибута next_run
+                try:
+                    if hasattr(job, 'next_run') and job.next_run:
+                        next_run_moscow = utc_to_moscow_time(job.next_run)
+                        job_name = job.name.replace('reminder_', '#')
+                        jobs_info.append(f"• {job_name}: {next_run_moscow.strftime('%d.%m %H:%M')}")
+                    else:
+                        job_name = job.name.replace('reminder_', '#')
+                        jobs_info.append(f"• {job_name}: запланировано")
+                except Exception:
                     job_name = job.name.replace('reminder_', '#')
-                    jobs_info.append(f"• {job_name}: {next_run_moscow.strftime('%d.%m %H:%M')}")
+                    jobs_info.append(f"• {job_name}: запланировано")
             
             if jobs_info:
                 status_msg += "\n".join(jobs_info)
@@ -2107,9 +2121,9 @@ def main():
         updater.job_queue.run_repeating(auto_sync_subscribed_chats, interval=3600, first=300)  # Каждый час, первый через 5 мин
         logger.info("🔄 Scheduled hourly subscribed chats sync")
         
-        # 🆕 АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ НАПОМИНАНИЙ КАЖДЫЕ 2 ЧАСА
-        updater.job_queue.run_repeating(auto_sync_reminders, interval=7200, first=600)  # Каждые 2 часа, первый через 10 мин
-        logger.info("🔄 Scheduled 2-hourly reminders auto-sync")
+        # 🆕 АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ НАПОМИНАНИЙ КАЖДЫЙ ЧАС
+        updater.job_queue.run_repeating(auto_sync_reminders, interval=3600, first=600)  # Каждый час, первый через 10 мин
+        logger.info("🔄 Scheduled hourly reminders auto-sync")
 
         # Health check server for Render free tier
         threading.Thread(target=start_health_server, daemon=True).start()
