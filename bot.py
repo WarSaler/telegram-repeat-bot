@@ -2205,7 +2205,7 @@ def main():
         logger.info("🔄 Scheduled 5-minute subscribed chats sync")
         
         # 🆕 АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ НАПОМИНАНИЙ КАЖДЫЕ 5 МИНУТ
-        updater.job_queue.run_repeating(auto_sync_reminders, interval=300, first=600)  # Каждые 5 минут, первый через 10 мин
+        updater.job_queue.run_repeating(auto_sync_reminders, interval=300, first=300)  # Каждые 5 минут, первый через 5 мин
         logger.info("🔄 Scheduled 5-minute reminders auto-sync")
 
         # Health check server for Render free tier
