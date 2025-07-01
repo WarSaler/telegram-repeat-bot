@@ -1412,6 +1412,81 @@ def send_reminder(context: CallbackContext):
                 logger.error("❌ Emergency restore failed, no reminders will be sent")
                 return
         
+        # 🆕 ОБРАБОТКА СЛУЧАЯ "НЕТ АКТИВНЫХ ЧАТОВ"
+        if not chats or len(chats) == 0:
+            moscow_time = get_moscow_time().strftime("%H:%M MSK")
+            utc_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            reminder_id = reminder.get('id', 'unknown')
+            
+            logger.warning(f"⚠️ No active chats available for reminder #{reminder_id}")
+            logger.info(f"📋 Reminder details: {reminder.get('type')} - '{reminder.get('text', '')[:50]}...'")
+            
+            # 📊 Логируем в Google Sheets
+            if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
+                try:
+                    sheets_manager.log_send_history(
+                        utc_time=utc_time,
+                        moscow_time=moscow_time,
+                        reminder_id=reminder_id,
+                        chat_id="NO_CHATS",
+                        status="NO_RECIPIENTS",
+                        error="No active chats available for delivery",
+                        text_preview=reminder.get('text', '')[:50] + "..." if len(reminder.get('text', '')) > 50 else reminder.get('text', '')
+                    )
+                    logger.info(f"📊 Logged 'no recipients' status for reminder #{reminder_id}")
+                except Exception as e:
+                    logger.error(f"❌ Error logging 'no recipients' to Google Sheets: {e}")
+            
+            # 🚮 АВТОМАТИЧЕСКОЕ УДАЛЕНИЕ РАЗОВЫХ НАПОМИНАНИЙ БЕЗ ПОЛУЧАТЕЛЕЙ
+            if reminder.get("type") == "once":
+                moscow_sent_time = get_moscow_time().strftime("%Y-%m-%d %H:%M:%S")
+                
+                # Обновляем данные напоминания перед удалением
+                updated_reminder = reminder.copy()
+                updated_reminder['last_sent'] = moscow_sent_time
+                updated_reminder['delivery_status'] = "No recipients available - auto-deleted"
+                
+                # Удаляем из локального файла
+                reminders = load_reminders()
+                reminders = [r for r in reminders if r.get("id") != reminder.get("id")]
+                save_reminders(reminders)
+                logger.info(f"🗑️ One-time reminder #{reminder_id} auto-deleted: no recipients available")
+                
+                # 📊 СИНХРОНИЗИРУЕМ УДАЛЕНИЕ В GOOGLE SHEETS
+                if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
+                    try:
+                        # Обновляем информацию о попытке отправки
+                        sheets_manager.sync_reminder(updated_reminder, "UPDATE")
+                        logger.info(f"📊 Updated reminder #{reminder_id} with 'no recipients' info")
+                        
+                        # Затем помечаем как удаленное
+                        sheets_manager.sync_reminder(updated_reminder, "DELETE")
+                        logger.info(f"📊 Marked reminder #{reminder_id} as 'Deleted' (no recipients)")
+                        
+                        # Логируем завершение обработки
+                        sheets_manager.log_reminder_action(
+                            "ONCE_AUTO_DELETED", 
+                            "SYSTEM", 
+                            "NoRecipients", 
+                            0, 
+                            f"One-time reminder auto-deleted: no active chats available for delivery",
+                            reminder_id
+                        )
+                        logger.info(f"✅ One-time reminder #{reminder_id} marked as completed: no recipients")
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Error syncing 'no recipients' deletion to Google Sheets: {e}")
+                        
+                    else:
+                        logger.warning(f"📵 Google Sheets not available - reminder #{reminder_id} removed locally only")
+                    logger.info(f"✅ One-time reminder #{reminder_id} processing completed: no recipients available")
+                
+            else:
+                # Для повторяющихся напоминаний просто логируем
+                logger.info(f"📅 Recurring reminder #{reminder_id} ({reminder.get('type')}) - will retry on next schedule")
+                
+            return  # Завершаем выполнение функции
+        
         moscow_time = get_moscow_time().strftime("%H:%M MSK")
         utc_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         reminder_text = f"🔔 <b>НАПОМИНАНИЕ</b> <i>({moscow_time})</i>\n\n{reminder.get('text', '')}"
