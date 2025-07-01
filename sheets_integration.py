@@ -607,7 +607,7 @@ class SheetsManager:
             return False, f"Ошибка восстановления из Google Sheets: {e}"
 
     def get_subscribed_chats(self):
-        """Получение списка подписанных чатов из Google Sheets"""
+        """Получение списка АКТИВНЫХ подписанных чатов из Google Sheets (исключая отписавшихся)"""
         if not self.is_initialized:
             return []
         
@@ -621,19 +621,32 @@ class SheetsManager:
                 logger.warning(f"Could not get records from Chat_Stats, sheet may be empty: {e}")
                 return []
             
-            # Возвращаем список всех Chat_ID из таблицы
+            # 🆕 Возвращаем только АКТИВНЫЕ чаты (исключаем отписавшихся)
             chat_ids = []
+            unsubscribed_count = 0
             for record in records:
                 try:
                     chat_id_value = record.get('Chat_ID')
+                    status = record.get('Status', 'Active').strip()  # По умолчанию Active для совместимости
+                    
                     if chat_id_value:
                         chat_id = int(chat_id_value)
                         if chat_id != 0:  # Исключаем 0 и пустые значения
+                            # 🚫 ФИЛЬТРУЕМ ПО СТАТУСУ - исключаем отписавшихся
+                            if status.lower() in ['unsubscribed', 'blocked', 'deleted']:
+                                unsubscribed_count += 1
+                                logger.debug(f"🚫 Excluding chat {chat_id} with status: {status}")
+                                continue
+                            
                             chat_ids.append(chat_id)
                 except (ValueError, TypeError):
                     continue
             
-            logger.info(f"🔄 Retrieved {len(chat_ids)} subscribed chats from Google Sheets")
+            if unsubscribed_count > 0:
+                logger.info(f"🔄 Retrieved {len(chat_ids)} active chats from Google Sheets (excluded {unsubscribed_count} unsubscribed)")
+            else:
+                logger.info(f"🔄 Retrieved {len(chat_ids)} active chats from Google Sheets")
+            
             return chat_ids
             
         except Exception as e:
