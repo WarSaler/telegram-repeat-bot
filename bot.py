@@ -8,8 +8,8 @@ from datetime import datetime, time as dt_time, timedelta
 import json
 import pytz
 import requests
-from telegram import Update, ParseMode
-from telegram.ext import Updater, CommandHandler, CallbackContext, Job, ConversationHandler, MessageHandler, Filters
+from telegram import Update, ParseMode, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, CallbackContext, Job, ConversationHandler, MessageHandler, Filters, CallbackQueryHandler
 from telegram.error import Conflict, BadRequest
 import html
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -1438,33 +1438,99 @@ def send_reminder(context: CallbackContext):
         # Отправляем каждому чату
         total_sent = 0
         total_failed = 0
+        blocked_chats = []  # 🆕 Список заблокированных чатов для удаления
         
-        for cid in chats:
+        for cid in chats[:]:  # Используем срез для безопасной итерации
             delivery_status = "SUCCESS"
             error_details = ""
             
             try:
-                context.bot.send_message(chat_id=cid, text=reminder_text, parse_mode=ParseMode.HTML)
+                # 🆕 Определяем тип чата для INLINE кнопки
+                try:
+                    chat_info = context.bot.get_chat(cid)
+                    is_private_chat = chat_info.type == 'private'
+                except:
+                    # Если не можем получить информацию о чате, считаем что это личка (для безопасности)
+                    is_private_chat = True
+                
+                # 🆕 Создаем INLINE кнопку "Отписаться" только для личных чатов
+                reply_markup = None
+                if is_private_chat:
+                    keyboard = [[InlineKeyboardButton("🚫 Отписаться от бота", callback_data="unsubscribe")]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                context.bot.send_message(
+                    chat_id=cid, 
+                    text=reminder_text, 
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=reply_markup
+                )
                 logger.info(f"✅ Reminder sent to chat {cid} at {moscow_time}")
                 total_sent += 1
                 
             except Exception as e:
+                error_str = str(e)
                 logger.error(f"❌ Failed to send reminder to chat {cid}: {e}")
-                error_details = str(e)
+                error_details = error_str
                 delivery_status = "FAILED"
                 
-                # Fallback без HTML
+                # 🆕 ПРОВЕРЯЕМ НА БЛОКИРОВКУ БОТА
+                if "Forbidden: bot was blocked by the user" in error_str or \
+                   "Forbidden: user is deactivated" in error_str or \
+                   "Forbidden: the group chat was deleted" in error_str or \
+                   "Bad Request: chat not found" in error_str:
+                    
+                    logger.warning(f"🚫 Chat {cid} blocked bot or deleted - adding to removal list")
+                    blocked_chats.append(cid)
+                    delivery_status = "BLOCKED_AUTO_REMOVE"
+                    error_details = f"Auto-removed due to: {error_str}"
+                    total_failed += 1
+                    continue  # Пропускаем fallback для заблокированных чатов
+                
+                # Fallback без HTML для остальных ошибок
                 try:
                     clean_text = reminder_text.replace('<b>', '').replace('</b>', '').replace('<i>', '').replace('</i>', '')
-                    context.bot.send_message(chat_id=cid, text=clean_text)
+                    
+                    # Определяем тип чата для fallback
+                    try:
+                        chat_info = context.bot.get_chat(cid)
+                        is_private_chat = chat_info.type == 'private'
+                    except:
+                        is_private_chat = True
+                    
+                    # Создаем INLINE кнопку для fallback
+                    reply_markup = None
+                    if is_private_chat:
+                        keyboard = [[InlineKeyboardButton("🚫 Отписаться от бота", callback_data="unsubscribe")]]
+                        reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    context.bot.send_message(
+                        chat_id=cid, 
+                        text=clean_text,
+                        reply_markup=reply_markup
+                    )
                     logger.info(f"✅ Fallback reminder sent to chat {cid} at {moscow_time}")
                     delivery_status = "SUCCESS_FALLBACK"
                     error_details = f"HTML failed: {str(e)}, sent as plain text"
                     total_sent += 1
                     
                 except Exception as e2:
-                    logger.error(f"❌ Failed to send fallback reminder to chat {cid}: {e2}")
-                    error_details = f"HTML failed: {str(e)}, Plain text failed: {str(e2)}"
+                    error_str2 = str(e2)
+                    
+                    # 🆕 ПРОВЕРЯЕМ НА БЛОКИРОВКУ И В FALLBACK
+                    if "Forbidden: bot was blocked by the user" in error_str2 or \
+                       "Forbidden: user is deactivated" in error_str2 or \
+                       "Forbidden: the group chat was deleted" in error_str2 or \
+                       "Bad Request: chat not found" in error_str2:
+                        
+                        logger.warning(f"🚫 Chat {cid} blocked bot (fallback) - adding to removal list")
+                        blocked_chats.append(cid)
+                        delivery_status = "BLOCKED_AUTO_REMOVE"
+                        error_details = f"Auto-removed due to: {error_str2}"
+                    else:
+                        logger.error(f"❌ Failed to send fallback reminder to chat {cid}: {e2}")
+                        error_details = f"HTML failed: {str(e)}, Plain text failed: {str(e2)}"
+                    
                     total_failed += 1
             
             # 📊 Логируем каждую отправку в Google Sheets
@@ -1482,26 +1548,50 @@ def send_reminder(context: CallbackContext):
                 except Exception as e:
                     logger.error(f"❌ Error logging send to Google Sheets for chat {cid}: {e}")
         
+        # 🆕 АВТОМАТИЧЕСКОЕ УДАЛЕНИЕ ЗАБЛОКИРОВАННЫХ ЧАТОВ
+        if blocked_chats:
+            logger.info(f"🚫 Processing {len(blocked_chats)} blocked chats for auto-removal")
+            
+            # Обновляем локальный файл
+            updated_chats = [cid for cid in chats if cid not in blocked_chats]
+            save_chats(updated_chats)
+            
+            # Обновляем Google Sheets
+            for blocked_chat_id in blocked_chats:
+                try:
+                    success, result = unsubscribe_user(blocked_chat_id, "BlockedUser", "AUTO_BLOCKED")
+                    if success:
+                        logger.info(f"✅ Auto-removed blocked chat {blocked_chat_id}")
+                    else:
+                        logger.warning(f"⚠️ Could not auto-remove blocked chat {blocked_chat_id}: {result}")
+                except Exception as e:
+                    logger.error(f"❌ Error auto-removing blocked chat {blocked_chat_id}: {e}")
+            
+            logger.info(f"🧹 Auto-removal completed: {len(blocked_chats)} blocked chats removed")
+        
         # 📊 Итоговый лог в Google Sheets
         if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
             try:
                 final_status = "COMPLETED" if total_failed == 0 else f"PARTIAL ({total_sent}/{total_sent + total_failed})"
+                if blocked_chats:
+                    final_status += f", REMOVED {len(blocked_chats)} BLOCKED"
+                
                 sheets_manager.log_send_history(
                     utc_time=utc_time,
                     moscow_time=moscow_time,
                     reminder_id=reminder_id,
                     chat_id="SUMMARY",
                     status=final_status,
-                    error=f"Sent: {total_sent}, Failed: {total_failed}",
+                    error=f"Sent: {total_sent}, Failed: {total_failed}, Blocked: {len(blocked_chats)}",
                     text_preview=f"Total chats: {len(chats)}"
                 )
-                logger.info(f"📊 Logged final summary for reminder #{reminder_id}: {total_sent} sent, {total_failed} failed")
+                logger.info(f"📊 Logged final summary for reminder #{reminder_id}: {total_sent} sent, {total_failed} failed, {len(blocked_chats)} auto-removed")
             except Exception as e:
                 logger.error(f"❌ Error logging final summary to Google Sheets: {e}")
         elif SHEETS_AVAILABLE and sheets_manager and not sheets_manager.is_initialized:
             logger.warning(f"📵 Google Sheets not initialized - final summary for reminder #{reminder_id} not logged")
         
-        logger.info(f"📈 Reminder #{reminder_id} delivery summary: {total_sent} sent, {total_failed} failed")
+        logger.info(f"📈 Reminder #{reminder_id} delivery summary: {total_sent} sent, {total_failed} failed, {len(blocked_chats)} auto-removed")
         
         # 🆕 УЛУЧШЕННОЕ УДАЛЕНИЕ РАЗОВЫХ НАПОМИНАНИЙ ПОСЛЕ ОТПРАВКИ
         if reminder.get("type") == "once":
@@ -1510,7 +1600,7 @@ def send_reminder(context: CallbackContext):
             # Обновляем данные напоминания перед удалением
             updated_reminder = reminder.copy()
             updated_reminder['last_sent'] = moscow_sent_time
-            updated_reminder['delivery_status'] = f"Sent to {total_sent} chats, failed to {total_failed} chats"
+            updated_reminder['delivery_status'] = f"Sent to {total_sent} chats, failed to {total_failed} chats, removed {len(blocked_chats)} blocked"
             
             # Удаляем из локального файла
             reminders = load_reminders()
@@ -1535,7 +1625,7 @@ def send_reminder(context: CallbackContext):
                         "SYSTEM", 
                         "AutoDelete", 
                         0, 
-                        f"One-time reminder completed and auto-deleted. Sent: {total_sent}, Failed: {total_failed}",
+                        f"One-time reminder completed and auto-deleted. Sent: {total_sent}, Failed: {total_failed}, Blocked: {len(blocked_chats)}",
                         reminder_id
                     )
                     
@@ -2210,6 +2300,174 @@ def about_bot(update: Update, context: CallbackContext):
         except:
             update.message.reply_text("❌ Ошибка получения информации о боте")
 
+def unsubscribe_user(chat_id, user_name="Unknown", reason="USER_REQUEST"):
+    """
+    Удаляет пользователя из рассылки (локально и в Google Sheets)
+    """
+    try:
+        # Загружаем текущий список чатов
+        try:
+            with open("subscribed_chats.json", "r") as f:
+                chats = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            chats = []
+        
+        # Проверяем, был ли пользователь подписан
+        if chat_id in chats:
+            # Удаляем из локального файла
+            chats.remove(chat_id)
+            save_chats(chats)
+            
+            logger.info(f"🚫 User {chat_id} ({user_name}) unsubscribed: {reason}")
+            
+            # Удаляем из Google Sheets
+            if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
+                try:
+                    # Обновляем статус чата в Google Sheets
+                    moscow_time = get_moscow_time().strftime("%Y-%m-%d %H:%M:%S")
+                    sheets_manager.log_operation(
+                        timestamp=moscow_time,
+                        action="CHAT_UNSUBSCRIBE",
+                        user_id="SYSTEM",
+                        username="AutoUnsubscribe",
+                        chat_id=chat_id,
+                        details=f"User unsubscribed: {user_name}, Reason: {reason}",
+                        reminder_id=""
+                    )
+                    
+                    # Обновляем список подписанных чатов в Google Sheets
+                    sheets_manager.sync_subscribed_chats_to_sheets(chats)
+                    
+                    # Помечаем чат как неактивный в статистике
+                    sheets_manager.update_chat_stats(chat_id, user_name, "unsubscribed", None, status="Unsubscribed")
+                    
+                    logger.info(f"📊 Successfully synced unsubscription of {chat_id} to Google Sheets")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Error syncing unsubscription to Google Sheets: {e}")
+                    # Продолжаем, даже если синхронизация не удалась
+            
+            return True, "SUCCESS"
+        else:
+            logger.warning(f"⚠️ User {chat_id} was not subscribed (unsubscribe attempt)")
+            return False, "NOT_SUBSCRIBED"
+            
+    except Exception as e:
+        logger.error(f"❌ Error unsubscribing user {chat_id}: {e}")
+        return False, f"ERROR: {str(e)}"
+
+def unsubscribe_command(update: Update, context: CallbackContext):
+    """
+    Команда /unsubscribe для отписки от бота
+    """
+    try:
+        chat_id = update.effective_chat.id
+        user = update.effective_user
+        user_name = user.username or user.first_name or "Unknown"
+        
+        success, result = unsubscribe_user(chat_id, user_name, "COMMAND")
+        
+        if success:
+            try:
+                update.message.reply_text(
+                    "✅ <b>Вы успешно отписались от бота</b>\n\n"
+                    "🚫 Вы больше не будете получать напоминания\n"
+                    "💬 Чтобы снова подписаться, используйте команду /start",
+                    parse_mode=ParseMode.HTML
+                )
+            except:
+                update.message.reply_text(
+                    "✅ Вы успешно отписались от бота\n\n"
+                    "🚫 Вы больше не будете получать напоминания\n"
+                    "💬 Чтобы снова подписаться, используйте команду /start"
+                )
+        else:
+            if result == "NOT_SUBSCRIBED":
+                try:
+                    update.message.reply_text(
+                        "ℹ️ <b>Вы уже не подписаны на бота</b>\n\n"
+                        "💬 Чтобы подписаться, используйте команду /start",
+                        parse_mode=ParseMode.HTML
+                    )
+                except:
+                    update.message.reply_text(
+                        "ℹ️ Вы уже не подписаны на бота\n\n"
+                        "💬 Чтобы подписаться, используйте команду /start"
+                    )
+            else:
+                try:
+                    update.message.reply_text(
+                        "❌ <b>Ошибка при отписке</b>\n\n"
+                        "Обратитесь к администратору бота",
+                        parse_mode=ParseMode.HTML
+                    )
+                except:
+                    update.message.reply_text("❌ Ошибка при отписке")
+                    
+    except Exception as e:
+        logger.error(f"Error in unsubscribe command: {e}")
+        try:
+            update.message.reply_text("❌ <b>Ошибка команды отписки</b>", parse_mode=ParseMode.HTML)
+        except:
+            update.message.reply_text("❌ Ошибка команды отписки")
+
+def handle_unsubscribe_button(update: Update, context: CallbackContext):
+    """
+    Обработчик INLINE кнопки "Отписаться"
+    """
+    try:
+        query = update.callback_query
+        query.answer()  # Подтверждаем нажатие кнопки
+        
+        chat_id = query.from_user.id  # ID пользователя, который нажал кнопку
+        user_name = query.from_user.username or query.from_user.first_name or "Unknown"
+        
+        success, result = unsubscribe_user(chat_id, user_name, "INLINE_BUTTON")
+        
+        if success:
+            try:
+                query.edit_message_text(
+                    "✅ <b>Вы успешно отписались от бота</b>\n\n"
+                    "🚫 Вы больше не будете получать напоминания\n"
+                    "💬 Чтобы снова подписаться, используйте команду /start",
+                    parse_mode=ParseMode.HTML
+                )
+            except:
+                query.edit_message_text(
+                    "✅ Вы успешно отписались от бота\n\n"
+                    "🚫 Вы больше не будете получать напоминания\n"
+                    "💬 Чтобы снова подписаться, используйте команду /start"
+                )
+        else:
+            if result == "NOT_SUBSCRIBED":
+                try:
+                    query.edit_message_text(
+                        "ℹ️ <b>Вы уже не подписаны на бота</b>\n\n"
+                        "💬 Чтобы подписаться, используйте команду /start",
+                        parse_mode=ParseMode.HTML
+                    )
+                except:
+                    query.edit_message_text(
+                        "ℹ️ Вы уже не подписаны на бота\n\n"
+                        "💬 Чтобы подписаться, используйте команду /start"
+                    )
+            else:
+                try:
+                    query.edit_message_text(
+                        "❌ <b>Ошибка при отписке</b>\n\n"
+                        "Обратитесь к администратору бота",
+                        parse_mode=ParseMode.HTML
+                    )
+                except:
+                    query.edit_message_text("❌ Ошибка при отписке")
+                    
+    except Exception as e:
+        logger.error(f"Error in unsubscribe button handler: {e}")
+        try:
+            update.callback_query.answer("❌ Ошибка при отписке", show_alert=True)
+        except:
+            pass
+
 def main():
     try:
         global BOT_START_TIME
@@ -2294,6 +2552,10 @@ def main():
         dp.add_handler(CommandHandler("restore_reminders", restore_reminders))
         dp.add_handler(CommandHandler("next", next_notification))
         dp.add_handler(CommandHandler("status", bot_status))
+        dp.add_handler(CommandHandler("unsubscribe", unsubscribe_command))  # 🆕 Команда отписки
+        
+        # 🆕 Обработчик INLINE кнопок
+        dp.add_handler(CallbackQueryHandler(handle_unsubscribe_button, pattern="^unsubscribe$"))
 
         # Добавляем обработчик ошибок
         dp.add_error_handler(error_handler)

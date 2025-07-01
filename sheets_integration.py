@@ -111,7 +111,7 @@ class SheetsManager:
                 ],
                 'Chat_Stats': [
                     'Chat_ID', 'Chat_Name', 'Chat_Type', 'Reminders_Count', 
-                    'Last_Activity', 'Members_Count', 'First_Seen'
+                    'Last_Activity', 'Members_Count', 'First_Seen', 'Status'
                 ],
                 'Operation_Logs': [
                     'Timestamp_UTC', 'Timestamp_MSK', 'Action', 'User_ID', 
@@ -277,8 +277,8 @@ class SheetsManager:
             logger.error(f"Error logging reminder sent: {e}")
     
     def update_chat_stats(self, chat_id: int, chat_name: str, chat_type: str, 
-                         members_count: int = None):
-        """Обновление статистики чатов"""
+                         members_count: int = None, status: str = "Active"):
+        """Обновление статистики чатов с поддержкой статуса"""
         if not self.is_initialized:
             return
         
@@ -311,7 +311,22 @@ class SheetsManager:
                 worksheet.update_cell(row_to_update, 5, now_msk)    # Last_Activity
                 if members_count is not None:
                     worksheet.update_cell(row_to_update, 6, members_count)  # Members_Count
-                logger.info(f"📊 Updated existing chat {chat_id} in Google Sheets")
+                
+                # 🆕 Обновляем статус (добавляем новый столбец если нужно)
+                try:
+                    worksheet.update_cell(row_to_update, 8, status)  # Status (столбец 8)
+                except Exception as e:
+                    # Возможно, столбец Status еще не существует, добавляем заголовок
+                    try:
+                        headers = worksheet.row_values(1)
+                        if 'Status' not in headers:
+                            # Добавляем заголовок Status в столбец 8
+                            worksheet.update_cell(1, 8, 'Status')
+                        worksheet.update_cell(row_to_update, 8, status)
+                    except Exception as e2:
+                        logger.warning(f"Could not update status column: {e2}")
+                
+                logger.info(f"📊 Updated existing chat {chat_id} in Google Sheets with status: {status}")
             else:
                 # Создаем новую запись
                 row = [
@@ -321,10 +336,21 @@ class SheetsManager:
                     0,  # Reminders_Count - будет обновляться отдельно
                     now_msk,  # Last_Activity
                     members_count or 0,  # Members_Count
-                    now_msk   # First_Seen
+                    now_msk,   # First_Seen
+                    status     # 🆕 Status
                 ]
+                
+                # Проверяем, есть ли заголовок Status
+                try:
+                    headers = worksheet.row_values(1)
+                    if len(headers) < 8 or headers[7] != 'Status':
+                        # Добавляем заголовок Status
+                        worksheet.update_cell(1, 8, 'Status')
+                except:
+                    pass
+                
                 worksheet.append_row(row)
-                logger.info(f"📊 Added new chat {chat_id} to Google Sheets")
+                logger.info(f"📊 Added new chat {chat_id} to Google Sheets with status: {status}")
             
         except Exception as e:
             logger.error(f"Error updating chat stats: {e}")
