@@ -1477,10 +1477,11 @@ def send_reminder(context: CallbackContext):
                     except Exception as e:
                         logger.error(f"❌ Error syncing 'no recipients' deletion to Google Sheets: {e}")
                         
-                    else:
-                        logger.warning(f"📵 Google Sheets not available - reminder #{reminder_id} removed locally only")
-                    logger.info(f"✅ One-time reminder #{reminder_id} processing completed: no recipients available")
+                else:
+                    logger.warning(f"📵 Google Sheets not available - reminder #{reminder_id} removed locally only")
                 
+                logger.info(f"✅ One-time reminder #{reminder_id} processing completed: no recipients available")
+                    
             else:
                 # Для повторяющихся напоминаний просто логируем
                 logger.info(f"📅 Recurring reminder #{reminder_id} ({reminder.get('type')}) - will retry on next schedule")
