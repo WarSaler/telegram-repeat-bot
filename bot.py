@@ -1503,23 +1503,54 @@ def send_reminder(context: CallbackContext):
         
         logger.info(f"📈 Reminder #{reminder_id} delivery summary: {total_sent} sent, {total_failed} failed")
         
-        # Удаляем разовые напоминания после отправки
+        # 🆕 УЛУЧШЕННОЕ УДАЛЕНИЕ РАЗОВЫХ НАПОМИНАНИЙ ПОСЛЕ ОТПРАВКИ
         if reminder.get("type") == "once":
+            moscow_sent_time = get_moscow_time().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Обновляем данные напоминания перед удалением
+            updated_reminder = reminder.copy()
+            updated_reminder['last_sent'] = moscow_sent_time
+            updated_reminder['delivery_status'] = f"Sent to {total_sent} chats, failed to {total_failed} chats"
+            
+            # Удаляем из локального файла
             reminders = load_reminders()
             reminders = [r for r in reminders if r.get("id") != reminder.get("id")]
             save_reminders(reminders)
-            logger.info(f"🗑️ One-time reminder #{reminder_id} removed after sending")
+            logger.info(f"🗑️ One-time reminder #{reminder_id} removed from local storage after successful delivery")
             
-            # 📊 Логируем удаление в Google Sheets
+            # 📊 СИНХРОНИЗИРУЕМ УДАЛЕНИЕ В GOOGLE SHEETS
             if SHEETS_AVAILABLE and sheets_manager and sheets_manager.is_initialized:
                 try:
-                    sheets_manager.sync_reminder(reminder, "DELETE")
-                    logger.info(f"📊 Successfully synced reminder #{reminder_id} deletion to Google Sheets")
+                    # Сначала обновляем информацию о последней отправке
+                    sheets_manager.sync_reminder(updated_reminder, "UPDATE")
+                    logger.info(f"📊 Updated last_sent info for reminder #{reminder_id} in Google Sheets")
+                    
+                    # Затем помечаем как удаленное
+                    sheets_manager.sync_reminder(updated_reminder, "DELETE")
+                    logger.info(f"📊 Successfully marked reminder #{reminder_id} as 'Deleted' in Google Sheets")
+                    
+                    # Логируем завершение обработки разового напоминания
+                    sheets_manager.log_reminder_action(
+                        "ONCE_COMPLETED", 
+                        "SYSTEM", 
+                        "AutoDelete", 
+                        0, 
+                        f"One-time reminder completed and auto-deleted. Sent: {total_sent}, Failed: {total_failed}",
+                        reminder_id
+                    )
+                    
                 except Exception as e:
-                    logger.error(f"❌ Error syncing reminder deletion to Google Sheets: {e}")
+                    logger.error(f"❌ Error syncing one-time reminder #{reminder_id} deletion to Google Sheets: {e}")
+                    # Даже если синхронизация не удалась, локальное удаление уже выполнено
+                    
             elif SHEETS_AVAILABLE and sheets_manager and not sheets_manager.is_initialized:
                 logger.warning(f"📵 Google Sheets not initialized - reminder #{reminder_id} deletion not synced")
+                logger.warning("   One-time reminder removed locally but Google Sheets status not updated")
+            else:
+                logger.warning(f"📵 Google Sheets not available - reminder #{reminder_id} removed locally only")
             
+            logger.info(f"✅ One-time reminder #{reminder_id} processing completed: delivered and removed")
+        
     except Exception as e:
         logger.error(f"❌ Critical error in send_reminder: {e}")
         
