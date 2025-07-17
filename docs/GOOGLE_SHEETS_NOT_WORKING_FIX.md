@@ -47,8 +47,11 @@ sheets_manager.is_initialized: False
 Name: BOT_TOKEN
 Value: ваш_токен_от_BotFather
 
+**2. GOOGLE_SHEETS_ID:**
+```
 Name: GOOGLE_SHEETS_ID  
-Value: 1yKzm2ZPgMeWOajT2f7baiG3xEWXHeAR43eX2TJUwhR4
+Value: 1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+```
 
 Name: GOOGLE_SHEETS_CREDENTIALS
 Value: {"type":"service_account","project_id":"reminder-bot-464405",...весь JSON в одну строку...}

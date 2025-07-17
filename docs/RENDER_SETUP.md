@@ -45,10 +45,10 @@ Google Sheets credentials or ID not found in environment variables
 
 **🔴 ВНИМАНИЕ:** Все переменные должны быть настроены **ТОЧНО** как указано!
 
-| Переменная | Значение | Описание |
-|------------|----------|----------|
+| Переменная | Пример значения | Описание |
+|------------|-----------------|----------|
 | `BOT_TOKEN` | `ваш_telegram_bot_token` | Токен от @BotFather |
-| `GOOGLE_SHEETS_ID` | `1yKzm2ZPgMeWOajT2f7baiG3xEWXHeAR43eX2TJUwhR4` | ID Google таблицы |
+| `GOOGLE_SHEETS_ID` | `1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` | ID Google таблицы |
 | `GOOGLE_SHEETS_CREDENTIALS` | `{содержимое JSON файла}` | Service Account JSON |
 | `PORT` | `8000` | Порт для health check |
 | `BASE_URL` | `https://ваш-app-name.onrender.com` | URL вашего сервиса |
@@ -66,8 +66,8 @@ Value: ваш_токен_от_BotFather
 ```
 
 ```
-Name: GOOGLE_SHEETS_ID  
-Value: 1yKzm2ZPgMeWOajT2f7baiG3xEWXHeAR43eX2TJUwhR4
+Name: GOOGLE_SHEETS_ID
+Value: 1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ```
 
 ```

@@ -5,9 +5,13 @@
 Перейдите в настройки вашего приложения на Render и добавьте следующие переменные окружения:
 
 ### 1. GOOGLE_SHEETS_ID
+
+После создания таблицы скопируйте ID из URL:
 ```
-Значение: 1yKzm2ZPgMeWOajT2f7baiG3xEWXHeAR43eX2TJUwhR4
+https://docs.google.com/spreadsheets/d/1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX/edit
 ```
+
+Значение: 1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 ### 2. GOOGLE_SHEETS_CREDENTIALS
 ```
