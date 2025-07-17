@@ -9,10 +9,10 @@ Telegram-бот для создания напоминаний с **автома
 ### 🎯 Интерфейс бота
 <img src="images/demo/bot_interface.jpeg" alt="Интерфейс Telegram бота" width="400">
 
-### ⏰ Создание напоминаний  
+### ⏰ Работа напоминаний  
 <img src="images/demo/reminder_creation.jpeg" alt="Создание напоминания" width="400">
 
-### 📊 Google Sheets интеграция
+### 📊 Создание напоминаний
 <img src="images/demo/google_sheets.jpeg" alt="Google Sheets интеграция" width="400">
 
 </div>
